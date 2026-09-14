@@ -1,0 +1,50 @@
+# 執行紀錄與可能含私人對話資訊的備份
+logs/
+backups/
+*.log
+*.jsonl
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*.bak
+
+# 個人雲端清單、核對報告與清理計畫
+cloud-snapshot*.json
+cloud-comparison*.json
+project-scan*.json
+project-scan*.csv
+ipad-recents-plan*.json
+before-sections*.json
+
+# Python 執行環境與快取
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# 個人設定、憑證、編輯器與暫存檔
+.env
+.env.*
+!.env.example
+.codex/
+.idea/
+.vscode/
+*.pem
+*.key
+*.tmp
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 產出壓縮檔與建置結果
+*.zip
+dist/
+build/
+*.egg-info/
