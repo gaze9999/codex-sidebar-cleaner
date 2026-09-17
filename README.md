@@ -9,6 +9,7 @@
 
 1. **Clean confirmed deleted entries**：先檢查，再掃描日誌並清除有 `conversation_deleted` 證據的本機 ChatGPT 索引，包含專案內項目。
 2. **Verify, scan, reconcile with cloud, then clean**：檢查 → 全日期掃描（含專案）→ 要求 App 核對 → 等待 App 核對完成 → 清理已確認刪除的索引。
+   App 核對後若沒有待清索引，流程會直接完成，不會要求再次退出；只有實際需要清理時才等待第 2 次退出。
 3. **Organize local tasks**：先檢查，再把符合條件的 local tasks 移到「本機 Codex」section，與雲端核對清理分開執行。
 4. **Exit**：離開。
 

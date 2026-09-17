@@ -5,6 +5,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import Mock, patch
 
+import clean_codex_catalog as cleaner
 import maintain_sidebar as workflow
 import organize_local_threads as organizer
 
@@ -72,6 +73,14 @@ class WorkflowTests(unittest.TestCase):
         with patch.object(workflow, 'reconciliation_complete', return_value=False), \
              self.assertRaises(TimeoutError):
             workflow.wait_for_reconciliation(Path('test-home'), 0, Mock())
+
+    def test_empty_cleanup_does_not_require_desktop_exit(self):
+        self.assertFalse(cleaner.cleanup_requires_desktop_exit(
+            apply=True, reconcile=False, rows=[]))
+        self.assertTrue(cleaner.cleanup_requires_desktop_exit(
+            apply=True, reconcile=True, rows=[]))
+        self.assertTrue(cleaner.cleanup_requires_desktop_exit(
+            apply=True, reconcile=False, rows=[('cloud', 'thread', 'title')]))
 
     def test_organization_precheck_failure_prevents_server_and_moves(self):
         with tempfile.TemporaryDirectory() as directory, \

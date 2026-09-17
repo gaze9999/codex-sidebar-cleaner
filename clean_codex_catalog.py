@@ -242,6 +242,11 @@ def targets(connection: sqlite3.Connection, ids: list[str]) -> list[tuple[str, s
     return rows
 
 
+def cleanup_requires_desktop_exit(*, apply: bool, reconcile: bool,
+                                  rows: list[tuple[str, str, str]]) -> bool:
+    return apply and (reconcile or bool(rows))
+
+
 def retained_digest(connection: sqlite3.Connection, ids: list[str]) -> str:
     rows = connection.execute(
         f"SELECT * FROM local_thread_catalog WHERE NOT "
@@ -481,6 +486,11 @@ def main() -> int:
         audit.record("inspection", rows=[{"thread_id": r[1], "title": r[2]} for r in rows])
         if not args.apply:
             print(f"Read-only check: {len(rows)} matching entries. Log: {audit.path}")
+            return 0
+        if not cleanup_requires_desktop_exit(apply=args.apply, reconcile=args.reconcile, rows=rows):
+            audit.record("no_op", reason="No matching stale rows; desktop exit is not required.")
+            print(f"No matching stale entries. Cleanup finished without closing Codex. Log: {audit.path}",
+                  flush=True)
             return 0
         audit.record("waiting_for_desktop_exit", timeout_seconds=args.wait_seconds)
         print("Exit Codex/ChatGPT from the system tray. Keep THIS console open.", flush=True)
