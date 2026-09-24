@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 from contextlib import closing
 from datetime import datetime
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -22,15 +23,25 @@ def reconciliation_complete(home: Path) -> bool:
     with closing(connect(home / "sqlite" / "codex-dev.db", "ro")) as reader:
         validate_schema(reader)
         rows = reader.execute(
-            "SELECT s.initial_build_complete,s.last_full_reconciled_at, "
-            "EXISTS(SELECT 1 FROM local_thread_catalog_scan_checkpoints p WHERE p.host_id=h.host_id) "
+            "SELECT h.host_id,s.initial_build_complete,s.last_full_reconciled_at "
             "FROM local_thread_catalog_hosts h LEFT JOIN local_thread_catalog_sync_state s USING(host_id) "
             "WHERE h.host_kind='chatgpt'"
         ).fetchall()
-    if len(rows) != 1 or rows[0][0] is None:
-        raise RuntimeError("Expected exactly one ChatGPT host with sync state; stopping before cleanup.")
-    complete, reconciled_at, pending = rows[0]
-    return complete == 1 and isinstance(reconciled_at, (int, float)) and reconciled_at > 0 and not pending
+        if len(rows) != 1 or rows[0][1] is None:
+            raise RuntimeError("Expected exactly one ChatGPT host with sync state; stopping before cleanup.")
+        host, complete, reconciled_at = rows[0]
+        checkpoints = reader.execute(
+            "SELECT checkpoint FROM local_thread_catalog_scan_checkpoints WHERE host_id=?", (host,)
+        ).fetchall()
+    if complete != 1 or not isinstance(reconciled_at, (int, float)) or reconciled_at <= 0:
+        return False
+    for (raw,) in checkpoints:
+        try:
+            if json.loads(raw)["attempt"]["mode"] != "incremental":
+                return False
+        except (TypeError, ValueError, KeyError):
+            return False
+    return True
 
 
 def wait_for_reconciliation(home: Path, timeout: int, audit: Audit) -> None:
@@ -41,7 +52,7 @@ def wait_for_reconciliation(home: Path, timeout: int, audit: Audit) -> None:
         if reconciliation_complete(home):
             audit.record("app_reconciliation_observed", live_cloud_verified=False,
                          limitation="App sync-state completion only; not per-conversation verification across all dates.")
-            print("App reconciliation finished. Exit Codex/ChatGPT again so cleanup can continue.", flush=True)
+            print("App reconciliation finished. Checking whether cleanup is needed.", flush=True)
             return
         if time.monotonic() >= deadline:
             raise TimeoutError("App reconciliation did not finish; cleanup was not run.")

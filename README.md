@@ -82,8 +82,8 @@ python clean_codex_catalog.py --verify --database "D:\CodexData\sqlite\codex-dev
 
 1. 自動執行原本的檢查，再掃描所有日期、包含專案的本機索引，輸出 JSON／CSV。
 2. 依提示完全退出 Codex/ChatGPT，保持命令視窗開啟。程式備份並重設核對進度。
-3. 依提示重新開啟 Codex。程式等到唯一 ChatGPT host 的同步狀態顯示初始建置完成、已有核對時間且無待續掃描 checkpoint，才繼續。預設最多等 30 分鐘；逾時不執行清理。
-4. 依提示再次完全退出 Codex/ChatGPT。程式重新讀取日誌證據，備份並清除已確認刪除的本機索引。
+3. 依提示重新開啟 Codex。程式等到唯一 ChatGPT host 的同步狀態顯示初始建置完成、已有核對時間，且沒有未完成的 full scan checkpoint，才繼續。App 後續產生的 incremental scan checkpoint 不會阻擋流程。預設最多等 30 分鐘；逾時不執行清理。
+4. 程式重新讀取日誌證據。若仍有已確認刪除的本機索引，才依提示再次完全退出 Codex/ChatGPT，接著備份並清理；沒有待清項目時直接完成。
 
 清理完成後可再開啟 Codex。若需要整理 local tasks，另選選單第 3 項；雲端清理流程不會搬動 local tasks。
 

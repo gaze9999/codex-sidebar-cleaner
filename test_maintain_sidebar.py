@@ -94,23 +94,25 @@ class WorkflowTests(unittest.TestCase):
             eligible.assert_not_called()
             server.assert_not_called()
 
-    def test_sync_completion_requires_timestamp_and_no_checkpoint(self):
+    def test_sync_completion_allows_incremental_checkpoint_after_full_reconciliation(self):
         for complete, timestamp, checkpoint, expected in [
-            (0, None, False, False), (1, None, False, False),
-            (1, 1234, True, False), (0, 1234, False, False),
-            (1, 1234, False, True),
+            (0, None, None, False), (1, None, None, False),
+            (1, 1234, '{"attempt":{"mode":"full"}}', False),
+            (1, 1234, '{"attempt":{"mode":"incremental"}}', True),
+            (1, 1234, 'invalid', False), (0, 1234, None, False),
+            (1, 1234, None, True),
         ]:
             with self.subTest(complete=complete, timestamp=timestamp, checkpoint=checkpoint):
                 db = sqlite3.connect(':memory:')
                 db.executescript('''
                     CREATE TABLE local_thread_catalog_hosts(host_id TEXT,host_kind TEXT);
                     CREATE TABLE local_thread_catalog_sync_state(host_id TEXT,initial_build_complete INTEGER,last_full_reconciled_at INTEGER);
-                    CREATE TABLE local_thread_catalog_scan_checkpoints(host_id TEXT);
+                    CREATE TABLE local_thread_catalog_scan_checkpoints(host_id TEXT,checkpoint TEXT);
                     INSERT INTO local_thread_catalog_hosts VALUES ('cloud','chatgpt');
                 ''')
                 db.execute('INSERT INTO local_thread_catalog_sync_state VALUES (?,?,?)', ('cloud', complete, timestamp))
                 if checkpoint:
-                    db.execute("INSERT INTO local_thread_catalog_scan_checkpoints VALUES ('cloud')")
+                    db.execute('INSERT INTO local_thread_catalog_scan_checkpoints VALUES (?,?)', ('cloud', checkpoint))
                 with patch.object(workflow, 'connect', return_value=db), \
                      patch.object(workflow, 'validate_schema'):
                     self.assertEqual(workflow.reconciliation_complete(Path('test-home')), expected)
