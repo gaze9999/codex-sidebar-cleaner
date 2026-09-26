@@ -1,7 +1,7 @@
-# Codex 側欄修復工具（Windows）
+# Codex 側欄修復工具（Windows / macOS）
 
 ## 說明
-這是我讓 codex 自己做出清理自己用的工具，將整個資料夾放在可寫入的位置，再雙擊 `start.cmd`。需要已安裝的 Python 3.10 或以上版本；不需要 pip 套件。
+這是我讓 codex 自己做出清理自己用的工具，將整個資料夾放在可寫入的位置。Windows 雙擊 `start.cmd`；macOS 在終端機執行 `sh start.command`。需要已安裝的 Python 3.10 或以上版本；不需要 pip 套件。macOS 從 `~/Library/Logs/com.openai.codex` 搜尋桌面日誌，Windows 維持原本的位置。
 
 ## 選單
 
@@ -23,9 +23,9 @@ python organize_local_threads.py --apply
 python organize_local_threads.py --apply --section-name "我的本機任務"
 ```
 
-第一行只預覽。可用 `--codex` 指定 Codex 執行檔，`--codex-home` 指定資料目錄。記錄存於 `logs/local-organize-時間/`，含計畫、原區段快照、每筆搬移與驗證結果。搬移採逐筆提交；部分失敗時已完成的分類保留，重新執行可接續。程式不會把已封存的任務還原。此 Python 模組使用跨平台標準庫，但僅在目前 Windows 實測，macOS/Linux 尚未實機驗證。
+第一行只預覽。可用 `--codex` 指定 Codex 執行檔，`--codex-home` 指定資料目錄。記錄存於 `logs/local-organize-時間/`，含計畫、原區段快照、每筆搬移與驗證結果。搬移採逐筆提交；部分失敗時已完成的分類保留，重新執行可接續。程式不會把已封存的任務還原。此 Python 模組使用跨平台標準庫；macOS 的區段介面仍須配合已安裝的 Codex CLI 版本驗證。
 
-> 清理／重設時請完全退出 Codex/ChatGPT，但保持這個命令視窗開啟。不要在 Codex 內建終端啟動後再退出 App；先前背景程序曾停在等待狀態。出現 `completed` 表示已知刪除項目的資料庫清理完成；`awaiting_app_reconciliation` 只表示同步重設已提交，仍需重開 App 等它完成核對。
+> 清理／重設時請完全退出 Codex/ChatGPT，但保持這個命令視窗開啟。macOS 請用「結束」而非只關閉視窗。不要在 Codex 內建終端啟動後再退出 App；先前背景程序曾停在等待狀態。出現 `completed` 表示已知刪除項目的資料庫清理完成；`awaiting_app_reconciliation` 只表示同步重設已提交，仍需重開 App 等它完成核對。
 
 ## 紀錄與備份
 
@@ -51,6 +51,24 @@ python clean_codex_catalog.py --scan-projects
 
 計畫只適用當次確認的帳戶與清單快照；它不是永久白名單。新增對話或移入專案後，舊計畫會停止，必須重新比對。專案內對話與本機 Codex 任務不納入此模式。可攜壓縮檔不包含你的個人計畫。
 
+## 清除使用者確認已從雲端刪除的本機索引
+
+若雲端聊天已由使用者確認刪除，但桌面日誌沒有 `conversation_deleted` 紀錄，可用 `--confirmed-deleted-plan plan.json` 指定單筆或多筆本機索引，包含專案內聊天。此模式只刪本機側欄快取，不會刪雲端聊天；「無法開啟」、404 或雲端清單缺席本身都不足以設定 `confirmed_deleted_in_cloud: true`。計畫應保存在本機，不要上傳到 repo。
+
+```json
+{
+  "schema_version": 1,
+  "scope": "confirmed_deleted_chatgpt_cache",
+  "confirmed_deleted_in_cloud": true,
+  "host_id": "chatgpt:account-host",
+  "entries": [
+    {"id": "00000000-0000-0000-0000-000000000001", "title": "已刪除的聊天", "project_id": "原專案 ID"}
+  ]
+}
+```
+
+先執行 `python clean_codex_catalog.py --confirmed-deleted-plan plan.json` 預覽，再於外部終端機以 `--apply` 執行並完全結束桌面 App。寫入時會再次比對帳戶、ID、標題及專案歸屬；任何一筆變動就停止。修改前建立一致的 SQLite 備份，交易失敗會回滾。
+
 預設資料庫：`$CODEX_HOME/sqlite/codex-dev.db`，未設定 CODEX_HOME 時使用目前使用者的 `~/.codex`。可用 `--codex-home` 或 `--database` 指定其他位置；用 `--log-root` 指定桌面日誌根目錄（可重複）；用 `--output-dir` 指定 logs/backups 的父目錄。
 
 ```powershell
@@ -63,7 +81,9 @@ python clean_codex_catalog.py --verify --database "D:\CodexData\sqlite\codex-dev
 
 快照格式為 JSON 物件：`schema_version: 1`、`source`、ISO 日期 `captured_at`、`account_label`、`coverage` 與 `conversations`。coverage 必須分別以布林值標示 `recents`、`projects`、`archived`、`cloud_work` 是否完整；conversations 每筆包含 UUID 格式 `id`、`title` 與明確的 `project_id`（無專案為 null）。未完整讀取的範圍必須填 false；完整性聲明不等同工具已驗證分頁。
 
-此核對模組使用標準 Python 與唯讀 SQLite，可供其他系統指定相容資料庫使用；尚未在 macOS/Linux 實機測試。Windows 清理功能仍受 Windows 限制。核對報告不會將「雲端未列出」自動判定為已刪除，也不會自動建立刪除計畫。
+若快照有逐筆核對顯示位置，可為聊天加 `"appearances": ["recents", "project"]`（也可只列其中一處）。報告的 `recents_project_same_chat` 會列出同一 ID 同時出現在兩處的聊天，`same_title_distinct_chats` 則列出同標題但 ID 不同、仍需人工檢查的項目。同一 ID 只有一份聊天資料：工具不會把「最近項目」當成可單獨刪除的副本，也不會為了消除顯示重複而刪除專案聊天。報告中的 `appearance_cleanup_candidates` 預設為空；清理已由使用者確認刪除的聊天仍使用前述單筆計畫。
+
+此核對模組使用標準 Python 與唯讀 SQLite，可供其他系統指定相容資料庫使用。核對報告不會將「雲端未列出」自動判定為已刪除，也不會自動建立刪除計畫。
 
 封存項目可加 `archived: true`，它們不需要出現在最近清單，未快取的封存項目會另外列出。若擷取的文字混有內容預覽，必須加 `title_verified: false`，此時只比對 ID 與專案歸屬，不能宣稱標題已核對。`visible_cloud_aligned_to_snapshot` 只表示可見雲端 ID 與歸屬對上本次快照，不表示內容可載入、未來保持同步或本機 Codex 任務應與手機相同。
 
@@ -73,7 +93,7 @@ python clean_codex_catalog.py --verify --database "D:\CodexData\sqlite\codex-dev
 
 「驗證通過」不是已逐筆證明全部雲端對話有效。未曾留下刪除錯誤、超過 App 核對範圍、或位於其他專案清單快取的殘留，仍可能需要額外診斷。不要只因對話從一般清單消失就判斷已刪除：它可能已移入專案。
 
-此版已在目前 Windows 的資料庫上做唯讀驗證，並以測試資料庫驗證專案內外處理、交易回滾及備份。不能承諾未來 App 更新後永遠相容。
+此版已在 Windows 與 macOS 的資料庫上做唯讀驗證，並以測試資料庫驗證專案內外處理、交易回滾及備份。macOS 正式資料庫清理仍須在 App 完全結束後執行；不能承諾未來 App 更新後永遠相容。
 
 
 ## 雲端核對與清理流程

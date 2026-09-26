@@ -43,7 +43,29 @@ def compare(connection: sqlite3.Connection, snapshot: dict[str, object]) -> dict
                 raise ValueError(f"{flag} must be boolean.")
         if "project_id" not in item or (item["project_id"] is not None and not isinstance(item["project_id"], str)):
             raise ValueError("project_id must explicitly be a string or null.")
+        if "appearances" in item:
+            appearances = item["appearances"]
+            if (not isinstance(appearances, list) or not appearances or
+                    any(not isinstance(value, str) or value not in {"recents", "project"} for value in appearances) or
+                    len(set(appearances)) != len(appearances)):
+                raise ValueError("appearances must contain distinct recents/project values.")
+            if "project" in appearances and item["project_id"] is None:
+                raise ValueError("A project appearance requires project_id.")
         cloud[key] = item
+    overlap = [
+        {"id": key, "title": item["title"], "project_id": item["project_id"],
+         "classification": "same_chat_in_two_sidebar_locations", "safe_to_remove_recent_only": False}
+        for key, item in cloud.items()
+        if set(item.get("appearances", [])) == {"recents", "project"}
+    ]
+    titles: dict[str, list[str]] = {}
+    for key, item in cloud.items():
+        if item.get("title_verified", True) and not item.get("archived", False):
+            titles.setdefault(str(item["title"]), []).append(key)
+    title_collisions = [
+        {"title": title, "ids": keys, "classification": "same_title_distinct_chats_unverified"}
+        for title, keys in titles.items() if len(keys) > 1
+    ]
     rows = connection.execute(
         "SELECT host_id,thread_id,display_title,source_kind,project_id,missing_candidate FROM local_thread_catalog"
     ).fetchall()
@@ -82,6 +104,10 @@ def compare(connection: sqlite3.Connection, snapshot: dict[str, object]) -> dict
             "cloud_only": [value for key, value in cloud.items() if key not in local_ids and not value.get("archived", False)],
             "archived_present_in_catalog": archived_present,
             "archived_not_cached": [value for key, value in cloud.items() if key not in local_ids and value.get("archived", False)],
+            "recents_project_same_chat": overlap,
+            "same_title_distinct_chats": title_collisions,
+            "appearance_coverage_complete": bool(coverage["recents"] and coverage["projects"]),
+            "appearance_cleanup_candidates": [],
             "visible_cloud_aligned_to_snapshot": active_coverage and visible_ids == active_cloud_ids and not differences,
             "alignment_scope": "ChatGPT catalog IDs and project membership only; not the full desktop sidebar",
             "desktop_sidebar_verified": False,
@@ -91,6 +117,8 @@ def compare(connection: sqlite3.Connection, snapshot: dict[str, object]) -> dict
             "automatic_removals": [], "fully_aligned": False,
             "limitations": ["A snapshot can be stale, incomplete or from a different account.",
                             "Missing IDs are not deletion evidence. No database changes are made.",
+                            "One chat shown in Recents and its project is one record; removing its cache row also removes its project entry.",
+                            "Equal titles with different IDs do not prove duplicate content.",
                             "Coverage declarations do not independently prove that all cloud pages were fetched."]}
 
 

@@ -4,7 +4,7 @@ python clean_codex_catalog.py          唯讀檢查並留下 log
 python clean_codex_catalog.py --apply  等待桌面退出，備份後以交易清理
 python clean_codex_catalog.py --apply --reconcile  重設雲端清單同步，交由 App 核對最近約 30 天
 
-Python 3.10+ / Windows。紀錄寫入 logs/catalog-run-*，備份寫入 backups/。
+Python 3.10+ / Windows 或 macOS。紀錄寫入 logs/catalog-run-*，備份寫入 backups/。
 資料庫備份可能包含私人側欄資訊，請留在本機。
 """
 
@@ -21,6 +21,7 @@ import re
 from pathlib import Path
 import sqlite3
 import subprocess
+import sys
 import time
 import traceback
 from typing import TypedDict, cast
@@ -59,11 +60,15 @@ def discover_deleted(roots: list[Path]) -> dict[str, dict[str, object]]:
 
 
 def log_roots() -> list[Path]:
-    local = Path(os.environ["LOCALAPPDATA"])
-    roots = [p / "LocalCache" / "Local" / "Codex" / "Logs"
-             for p in (local / "Packages").glob("OpenAI.Codex_*")]
-    roots.append(local / "Codex" / "Logs")
-    return roots
+    if sys.platform == "win32":
+        local = Path(os.environ["LOCALAPPDATA"])
+        roots = [p / "LocalCache" / "Local" / "Codex" / "Logs"
+                 for p in (local / "Packages").glob("OpenAI.Codex_*")]
+        roots.append(local / "Codex" / "Logs")
+        return roots
+    if sys.platform == "darwin":
+        return [Path.home() / "Library" / "Logs" / "com.openai.codex"]
+    raise RuntimeError("Only Windows and macOS are supported.")
 
 
 def previous_evidence(directory: Path) -> dict[str, dict[str, object]]:
@@ -212,12 +217,22 @@ class Audit:
 
 
 def app_running() -> bool:
-    result = subprocess.run(
-        ["tasklist.exe", "/FO", "CSV", "/NH"], capture_output=True,
-        check=True, creationflags=subprocess.CREATE_NO_WINDOW,
-    )
-    rows = csv.reader(result.stdout.decode("utf-8", errors="replace").splitlines())
-    return any(row and row[0].lower() in {"chatgpt.exe", "codex-desktop.exe"} for row in rows)
+    if sys.platform == "win32":
+        result = subprocess.run(
+            ["tasklist.exe", "/FO", "CSV", "/NH"], capture_output=True,
+            check=True, creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        rows = csv.reader(result.stdout.decode("utf-8", errors="replace").splitlines())
+        return any(row and row[0].lower() in {"chatgpt.exe", "codex-desktop.exe"} for row in rows)
+    if sys.platform == "darwin":
+        # macOS pgrep -x can miss a main app whose process name is a truncated path.
+        result = subprocess.run(["ps", "-axo", "command="], capture_output=True, check=False)
+        if result.returncode != 0:
+            raise RuntimeError("Could not inspect running apps; refusing to modify the database.")
+        lines = result.stdout.decode("utf-8", errors="replace").splitlines()
+        pattern = re.compile(r"^\S*/(?:Codex|ChatGPT)\.app/Contents/MacOS/(?:Codex|ChatGPT)(?:\s|$)")
+        return any(pattern.match(line.strip()) for line in lines)
+    raise RuntimeError("Only Windows and macOS are supported.")
 
 
 def connect(database: Path, mode: str) -> sqlite3.Connection:
@@ -265,6 +280,54 @@ class RecentsPlan(TypedDict):
     remove_ids: list[str]
 
 
+class ConfirmedDeletedEntry(TypedDict):
+    id: str
+    title: str
+    project_id: str | None
+
+
+class ConfirmedDeletedPlan(TypedDict):
+    schema_version: int
+    scope: str
+    confirmed_deleted_in_cloud: bool
+    host_id: str
+    entries: list[ConfirmedDeletedEntry]
+
+
+def load_confirmed_deleted_plan(path: Path) -> ConfirmedDeletedPlan:
+    plan = json.loads(path.read_text(encoding="utf-8-sig"))
+    if not isinstance(plan, dict) or plan.get("schema_version") != 1 or plan.get("scope") != "confirmed_deleted_chatgpt_cache":
+        raise RuntimeError("Unsupported confirmed-deleted plan.")
+    if plan.get("confirmed_deleted_in_cloud") is not True or not isinstance(plan.get("host_id"), str) or not plan["host_id"]:
+        raise RuntimeError("Plan requires explicit cloud deletion confirmation and exact host.")
+    entries = plan.get("entries")
+    if not isinstance(entries, list) or not entries:
+        raise RuntimeError("Plan requires at least one reviewed entry.")
+    ids = set()
+    for entry in entries:
+        if not isinstance(entry, dict) or set(entry) != {"id", "title", "project_id"}:
+            raise RuntimeError("Each entry requires only id, title, and project_id.")
+        key = entry["id"]
+        if not isinstance(key, str) or not re.fullmatch(r"[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}", key) or key in ids:
+            raise RuntimeError("Invalid or duplicate confirmed-deleted ID.")
+        if not isinstance(entry["title"], str) or not entry["title"]:
+            raise RuntimeError("Each entry requires a nonempty title.")
+        if entry["project_id"] is not None and not isinstance(entry["project_id"], str):
+            raise RuntimeError("project_id must be a string or null.")
+        ids.add(key)
+    return cast(ConfirmedDeletedPlan, plan)
+
+
+def validate_confirmed_deleted_plan(connection: sqlite3.Connection, plan: ConfirmedDeletedPlan) -> None:
+    for entry in plan["entries"]:
+        rows = connection.execute(
+            "SELECT host_id,display_title,project_id,source_kind FROM local_thread_catalog WHERE thread_id=?",
+            (entry["id"],),
+        ).fetchall()
+        if rows and rows != [(plan["host_id"], entry["title"], entry["project_id"], "chatgpt")]:
+            raise RuntimeError(f"Catalog entry changed or account differs: {entry['id']}. Nothing changed.")
+
+
 def load_recents_plan(path: Path) -> RecentsPlan:
     plan = json.loads(path.read_text(encoding="utf-8-sig"))
     if not isinstance(plan, dict) or plan.get("schema_version") != 1 or plan.get("scope") != "visible_nonproject_chatgpt":
@@ -295,7 +358,8 @@ def validate_recents_plan(connection: sqlite3.Connection, plan: RecentsPlan) -> 
 
 
 def cleanup(database: Path, audit: Audit, ids: list[str], backup: Path,
-            recents_plan: RecentsPlan | None = None) -> None:
+            recents_plan: RecentsPlan | None = None,
+            confirmed_plan: ConfirmedDeletedPlan | None = None) -> None:
     if app_running():
         raise RuntimeError("Desktop is still running; no cleanup performed.")
     connection = connect(database, "rw")
@@ -308,6 +372,11 @@ def cleanup(database: Path, audit: Audit, ids: list[str], backup: Path,
             audit.record("confirmed_recents_alignment", keep_ids=recents_plan["keep_ids"],
                          remove_ids=ids, scope=recents_plan["scope"],
                          reason="User confirmed complete mobile Recents reference; cache-only alignment, not proof of cloud deletion.")
+        if confirmed_plan is not None:
+            validate_confirmed_deleted_plan(connection, confirmed_plan)
+            audit.record("user_confirmed_cloud_deletion", entries=confirmed_plan["entries"],
+                         host_id=confirmed_plan["host_id"],
+                         reason="User-confirmed cloud deletion; local cache removal only.")
         if connection.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND "
                               "tbl_name IN ('local_thread_catalog','local_thread_catalog_metadata')").fetchall():
             raise RuntimeError("Unexpected triggers; refusing unknown side effects.")
@@ -448,6 +517,8 @@ def main() -> int:
     parser.add_argument("--reconcile", action="store_true")
     parser.add_argument("--verify", action="store_true", help="Read-only verification, including project rows")
     parser.add_argument("--align-recents", type=Path, help="Exact reviewed Recents plan JSON; requires --apply to modify")
+    parser.add_argument("--confirmed-deleted-plan", type=Path,
+                        help="User-reviewed cloud-deleted ChatGPT IDs, including project chats; requires --apply to modify")
     parser.add_argument("--scan-projects", action="store_true", help="Read-only inventory of projects and unassigned chats across all available dates")
     parser.add_argument("--codex-home", type=Path, default=Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))))
     parser.add_argument("--database", type=Path, help="Override the detected catalog database path")
@@ -459,17 +530,20 @@ def main() -> int:
         parser.error("--verify cannot be combined with --apply")
     if args.align_recents and args.reconcile:
         parser.error("--align-recents and --reconcile are separate operations")
-    if args.scan_projects and (args.apply or args.reconcile or args.align_recents):
+    if args.confirmed_deleted_plan and (args.align_recents or args.reconcile):
+        parser.error("--confirmed-deleted-plan is separate from Recents alignment and reconciliation")
+    if args.scan_projects and (args.apply or args.reconcile or args.align_recents or args.confirmed_deleted_plan):
         parser.error("--scan-projects is a separate read-only operation")
     output = args.output_dir.resolve()
     run = output / "logs" / ("catalog-run-" + datetime.now().strftime("%Y%m%d-%H%M%S-%f"))
     audit = Audit(run)
     try:
-        if os.name != "nt":
-            raise RuntimeError("Windows is required.")
+        if sys.platform not in {"win32", "darwin"}:
+            raise RuntimeError("Only Windows and macOS are supported.")
         database = (args.database or args.codex_home / "sqlite" / "codex-dev.db").resolve(strict=True)
         roots = args.log_root or log_roots()
         recents_plan = load_recents_plan(args.align_recents) if args.align_recents else None
+        confirmed_plan = load_confirmed_deleted_plan(args.confirmed_deleted_plan) if args.confirmed_deleted_plan else None
         audit.record("started", mode="apply" if args.apply else "check", reconcile=args.reconcile, database=str(database))
         evidence = previous_evidence(output / "logs")
         evidence.update(discover_deleted(roots))
@@ -481,7 +555,11 @@ def main() -> int:
                 return 0
             if recents_plan is not None:
                 validate_recents_plan(reader, recents_plan)
-            rows = targets(reader, recents_plan["remove_ids"] if recents_plan else sorted(evidence))
+            if confirmed_plan is not None:
+                validate_confirmed_deleted_plan(reader, confirmed_plan)
+            ids = ([entry["id"] for entry in confirmed_plan["entries"]] if confirmed_plan else
+                   recents_plan["remove_ids"] if recents_plan else sorted(evidence))
+            rows = targets(reader, ids)
             verify(reader, sorted(evidence), audit)
         audit.record("inspection", rows=[{"thread_id": r[1], "title": r[2]} for r in rows])
         if not args.apply:
@@ -493,7 +571,7 @@ def main() -> int:
                   flush=True)
             return 0
         audit.record("waiting_for_desktop_exit", timeout_seconds=args.wait_seconds)
-        print("Exit Codex/ChatGPT from the system tray. Keep THIS console open.", flush=True)
+        print("Quit Codex/ChatGPT completely. Keep this terminal open.", flush=True)
         deadline = time.monotonic() + args.wait_seconds
         while app_running():
             if time.monotonic() >= deadline:
@@ -508,8 +586,8 @@ def main() -> int:
         if args.reconcile:
             reset_sync(database, audit, output / "backups" / (run.name + ".sqlite"))
         else:
-            cleanup(database, audit, recents_plan["remove_ids"] if recents_plan else sorted(evidence),
-                    output / "backups" / (run.name + ".sqlite"), recents_plan)
+            cleanup(database, audit, ids,
+                    output / "backups" / (run.name + ".sqlite"), recents_plan, confirmed_plan)
         print(f"Done. Reopen Codex and verify. Log: {audit.path}", flush=True)
         return 0
     except Exception:
