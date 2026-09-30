@@ -1,6 +1,7 @@
 import argparse
 from contextlib import closing
 import json
+import os
 import sqlite3
 import tempfile
 from pathlib import Path
@@ -14,6 +15,133 @@ import organize_local_threads as organizer
 
 
 class WorkflowTests(unittest.TestCase):
+    def test_launcher_uses_pending_plan_or_exact_quoted_path_without_shell(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            pending = root / 'logs/pending-sidebar-reference-plan.json'
+            pending.parent.mkdir()
+            pending.write_text('{}', encoding='utf-8')
+            other = root / 'reviewed & selected.json'
+            other.write_text('{}', encoding='utf-8')
+            with patch('builtins.input', return_value=''):
+                self.assertEqual(workflow.choose_reference_plan(root), pending.resolve())
+            with patch('builtins.input', return_value='"' + str(other) + '"'), \
+                 patch.object(workflow.subprocess, 'run') as run:
+                self.assertEqual(workflow.choose_reference_plan(root), other.resolve())
+                run.assert_not_called()
+            with patch('builtins.input', return_value='CANCEL'):
+                self.assertIsNone(workflow.choose_reference_plan(root))
+
+    def test_launcher_empty_input_without_pending_plan_cancels(self):
+        with tempfile.TemporaryDirectory() as directory, patch('builtins.input', return_value=''):
+            self.assertIsNone(workflow.choose_reference_plan(Path(directory)))
+
+    def test_empty_catalog_cleanup_reports_pending_cloud_entries_without_writing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / 'catalog.sqlite'
+            database.touch()
+            args = ['clean_codex_catalog.py', '--apply', '--database', str(database), '--output-dir', str(root)]
+            failure = {'thread_id': '00000000-0000-0000-0000-000000000001', 'source_kind': 'chatgpt',
+                       'confirmed_deleted_catalog_target': False}
+            with patch.object(cleaner.sys, 'argv', args), \
+                 patch.object(cleaner.sys, 'platform', 'win32'), \
+                 patch.object(cleaner, 'connect'), patch.object(cleaner, 'validate_schema'), \
+                 patch.object(cleaner, 'verify'), patch.object(cleaner, 'log_roots', return_value=[]), \
+                 patch.object(cleaner, 'previous_evidence', return_value={}), \
+                 patch.object(cleaner, 'discover_deleted', return_value={}), \
+                 patch.object(cleaner, 'targets', return_value=[]), \
+                 patch.object(cleaner, 'diagnose_load_failures', return_value={'failures': [failure]}), \
+                 patch.object(cleaner, 'app_running') as running, patch.object(cleaner, 'cleanup') as cleanup:
+                self.assertEqual(cleaner.main(), 2)
+                running.assert_not_called()
+                cleanup.assert_not_called()
+
+    def test_load_diagnostics_reports_project_failure_outside_catalog_without_removal(self):
+        key = '00000000-0000-0000-0000-000000000001'
+        deleted = '00000000-0000-0000-0000-000000000002'
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            old = root / 'codex-desktop-00000000-0000-0000-0000-000000000000-10-t0-i1-000000-0.log'
+            latest = root / 'codex-desktop-00000000-0000-0000-0000-000000000001-20-t0-i1-000000-0.log'
+            old.write_text('2026-09-29T00:00:00.000Z warning sa_server_request_failed '
+                           'errorCode=conversation_deleted errorMessage=' + json.dumps({
+                               'detail': {'code': 'conversation_deleted', 'conversation_id': deleted}}), encoding='utf-8')
+            latest.write_text('2026-09-30T00:00:00.000Z warning sa_server_request_failed '
+                              'errorCode=conversation_inaccessible errorMessage=' + json.dumps({
+                                  'detail': {'code': 'conversation_inaccessible', 'conversation_id': key,
+                                             'message': 'No access'}}), encoding='utf-8')
+            os.utime(old, (100, 100))
+            os.utime(latest, (200, 200))
+            with closing(sqlite3.connect(':memory:')) as db:
+                db.execute('CREATE TABLE local_thread_catalog '
+                           '(host_id TEXT,thread_id TEXT,display_title TEXT,source_kind TEXT,project_id TEXT)')
+                db.execute('INSERT INTO local_thread_catalog VALUES (?,?,?,?,?)',
+                           ('cloud:user', deleted, 'Keep row', 'chatgpt', 'project-a'))
+                audit = cleaner.Audit(root / 'audit')
+                cleaner.diagnose_load_failures(db, [root], audit)
+                report = json.loads((audit.directory / 'load-diagnostics.json').read_text(encoding='utf-8'))
+                self.assertEqual([row['thread_id'] for row in report['failures']], [key])
+                self.assertEqual(report['failures'][0]['catalog_entries'], [])
+                self.assertFalse(report['failures'][0]['confirmed_deleted_catalog_target'])
+                self.assertEqual(report['automatic_removals'], [])
+                self.assertEqual(db.execute('SELECT thread_id FROM local_thread_catalog').fetchall(), [(deleted,)])
+            self.assertEqual(set(cleaner.discover_deleted([root])), {deleted})
+
+    def test_load_diagnostics_ignores_successfully_retried_thread_and_malformed_errors(self):
+        recovered = '00000000-0000-0000-0000-000000000001'
+        pending = '00000000-0000-0000-0000-000000000002'
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / 'codex-desktop-00000000-0000-0000-0000-000000000001-20-t0-i1-000000-0.log'
+            source.write_text('\n'.join([
+                f'2026-09-30T00:00:00.000Z error Request failed conversationId={recovered} '
+                'error={"code":-32603,"message":"timeout"} method=thread/read ',
+                f'2026-09-30T00:00:01.000Z info response_routed conversationId={recovered} '
+                'errorCode=null method=thread/read ',
+                f'2026-09-30T00:00:02.000Z error Request failed conversationId={pending} '
+                'error={"code":-32600,"message":"thread not loaded"} method=thread/read ',
+                '2026-09-30T00:00:03.000Z warning sa_server_request_failed errorMessage=invalid',
+            ]), encoding='utf-8')
+            sources, failures = cleaner.discover_load_failures([root, root])
+            self.assertEqual(len(sources), 1)
+            self.assertEqual(set(failures), {pending})
+            self.assertEqual(failures[pending]['category'], 'thread_load_failed')
+            self.assertEqual(cleaner.discover_deleted([root]), {})
+
+    def test_cleanup_refreshes_deleted_ids_after_exit_but_preserves_reviewed_plan_scope(self):
+        first = '00000000-0000-0000-0000-000000000001'
+        second = '00000000-0000-0000-0000-000000000002'
+        for reviewed in (False, True):
+            with self.subTest(reviewed=reviewed), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                database = root / 'catalog.sqlite'
+                database.touch()
+                args = ['clean_codex_catalog.py', '--apply', '--database', str(database),
+                        '--output-dir', str(root), '--log-root', str(root)]
+                if reviewed:
+                    plan = root / 'plan.json'
+                    plan.write_text(json.dumps({'schema_version': 1, 'scope': 'confirmed_deleted_chatgpt_cache',
+                                                'confirmed_deleted_in_cloud': True, 'host_id': 'cloud:user',
+                                                'entries': [{'id': first, 'title': 'Deleted', 'project_id': None}]}),
+                                    encoding='utf-8')
+                    args += ['--confirmed-deleted-plan', str(plan)]
+                with patch.object(cleaner.sys, 'argv', args), \
+                     patch.object(cleaner.sys, 'platform', 'win32'), \
+                     patch.object(cleaner, 'connect'), \
+                     patch.object(cleaner, 'validate_schema'), \
+                     patch.object(cleaner, 'validate_confirmed_deleted_plan'), \
+                     patch.object(cleaner, 'verify'), \
+                     patch.object(cleaner, 'diagnose_load_failures', return_value={'failures': []}), \
+                     patch.object(cleaner, 'previous_evidence', return_value={}), \
+                     patch.object(cleaner, 'discover_deleted', side_effect=[{first: {}}, {second: {}}]), \
+                     patch.object(cleaner, 'targets', return_value=[('cloud:user', first, 'Deleted')]), \
+                     patch.object(cleaner, 'app_running', return_value=False), \
+                     patch.object(cleaner.time, 'sleep'), \
+                     patch.object(cleaner, 'cleanup') as cleanup:
+                    self.assertEqual(cleaner.main(), 0)
+                    self.assertEqual(cleanup.call_args.args[2], [first] if reviewed else [first, second])
+
     def test_recents_project_overlap_is_reported_without_removal(self):
         one = '00000000-0000-0000-0000-000000000001'
         two = '00000000-0000-0000-0000-000000000002'
@@ -156,6 +284,41 @@ class WorkflowTests(unittest.TestCase):
             self.assertNotIn('--apply', command)
             self.assertNotIn('--reconcile', command)
         self.assertFalse(audit.record.call_args.kwargs['app_reconciliation_pending'])
+
+    def test_reference_cleanup_precedes_sync_reset_and_failure_stops_workflow(self):
+        args = argparse.Namespace(apply=True, codex_home=Path('test-home'), output_dir=Path('test-output'),
+                                  log_root=[], wait_seconds=7, reconcile_wait_seconds=7,
+                                  sidebar_reference_plan=Path('reviewed-references.json'))
+        with patch.object(workflow, 'inspect_sidebar_references'), \
+             patch.object(workflow.subprocess, 'run', side_effect=[Mock(returncode=0), Mock(returncode=0),
+                                                                  Mock(returncode=8)]) as run, \
+             patch.object(workflow, 'wait_for_reconciliation') as wait:
+            self.assertEqual(workflow.run_workflow(args, Mock()), 8)
+        self.assertEqual(len(run.call_args_list), 3)
+        command = run.call_args.args[0]
+        self.assertTrue(command[4].endswith('clean_sidebar_references.py'))
+        self.assertIn('--plan', command)
+        self.assertIn('reviewed-references.json', command)
+        self.assertNotIn('--reconcile', command)
+        wait.assert_not_called()
+
+    def test_pending_native_archives_do_not_start_local_reconciliation(self):
+        args = argparse.Namespace(apply=True, codex_home=Path('test-home'), output_dir=Path('test-output'),
+                                  log_root=[], wait_seconds=7, reconcile_wait_seconds=7,
+                                  reviewed_sidebar_plan=Path('reviewed-cloud.json'), archived_snapshot=None)
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(workflow, 'inspect_sidebar_references'), \
+             patch.object(workflow, 'connect') as connect, \
+             patch.object(workflow, 'load_reviewed_plan', return_value={'host_id': 'cloud:user', 'entries': [
+                 {'thread_id': '00000000-0000-0000-0000-000000000001', 'title': 'Old', 'project_id': None}]}), \
+             patch.object(workflow.subprocess, 'run') as run:
+            reader = connect.return_value
+            reader.execute.side_effect = [Mock(fetchall=Mock(return_value=[('cloud:user',)])), []]
+            audit = cleaner.Audit(Path(directory) / 'audit')
+            self.assertEqual(workflow.run_workflow(args, audit), 2)
+            report = json.loads((audit.directory / 'cloud-cleanup-status.json').read_text(encoding='utf-8'))
+            self.assertEqual(len(report['pending_ids']), 1)
+            run.assert_not_called()
 
     def test_each_failed_stage_stops_remaining_work(self):
         for index in range(4):

@@ -57,7 +57,7 @@ def references(rows: dict[str, dict], home: Path) -> dict[str, set[str]]:
 
 
 def plan_deletion(rows: dict[str, dict], spawned: dict[str, set[str]], refs: dict[str, set[str]],
-                  ids: list[str], include_dependencies: bool) -> dict:
+                  ids: list[str], include_dependencies: bool, allow_missing_rollouts: bool = False) -> dict:
     if not ids or any(not isinstance(key, str) for key in ids) or len(ids) != len(set(ids)):
         raise ValueError("Specify unique local thread IDs; empty selection is not allowed.")
     missing = set(ids) - rows.keys()
@@ -75,7 +75,8 @@ def plan_deletion(rows: dict[str, dict], spawned: dict[str, set[str]], refs: dic
                     raise ValueError(f"Archived fork requires explicit --include-archived-dependencies: {child}")
                 affected.add(child)
                 pending.append(child)
-    for key in affected:
+    missing_rollouts = []
+    for key in sorted(affected):
         row = rows[key]
         source = row["source"]
         if source not in ("vscode", "cli", "appServer"):
@@ -88,8 +89,16 @@ def plan_deletion(rows: dict[str, dict], spawned: dict[str, set[str]], refs: dic
             row["thread_source"] in ("subagent", "agent_forked_thread"))
         if row["archived"] != 1 or not local:
             raise ValueError(f"Active or unsupported thread would be deleted: {key}")
-        if not Path(row["rollout_path"]).is_file():
-            raise ValueError(f"Rollout missing; cannot back up: {key}")
+        raw_path = row["rollout_path"]
+        if not isinstance(raw_path, str) or not raw_path or not Path(raw_path).is_absolute():
+            raise ValueError(f"Unsupported rollout path: {key}")
+        path = Path(raw_path)
+        if path.exists() and not path.is_file():
+            raise ValueError(f"Rollout is not a regular file: {key}")
+        if not path.is_file():
+            if not allow_missing_rollouts:
+                raise ValueError(f"Rollout missing; review with --allow-missing-rollouts: {key}")
+            missing_rollouts.append(key)
     order: list[str] = []
     visiting: set[str] = set()
     visited: set[str] = set()
@@ -108,14 +117,21 @@ def plan_deletion(rows: dict[str, dict], spawned: dict[str, set[str]], refs: dic
     for key in ids:
         visit(key)
     return {"selected_ids": ids, "affected_ids": sorted(affected), "delete_order": order,
-            "dependencies": sorted(affected - set(ids)), "cloud_deleted": False}
+            "dependencies": sorted(affected - set(ids)), "missing_rollout_ids": missing_rollouts,
+            "cloud_deleted": False}
 
 
 def snapshot(rows: dict[str, dict], plan: dict) -> dict:
-    return {key: {"archived": rows[key]["archived"], "rollout_path": rows[key]["rollout_path"],
-                  "size": Path(rows[key]["rollout_path"]).stat().st_size,
-                  "mtime_ns": Path(rows[key]["rollout_path"]).stat().st_mtime_ns}
-            for key in plan["affected_ids"]}
+    result = {}
+    for key in plan["affected_ids"]:
+        try:
+            stat = Path(rows[key]["rollout_path"]).stat()
+        except FileNotFoundError:
+            stat = None
+        result[key] = {"row": rows[key], "rollout_exists": stat is not None,
+                       "size": stat.st_size if stat else None,
+                       "mtime_ns": stat.st_mtime_ns if stat else None}
+    return result
 
 
 def backup(home: Path, directory: Path, rows: dict[str, dict], plan: dict) -> None:
@@ -137,6 +153,10 @@ def backup(home: Path, directory: Path, rows: dict[str, dict], plan: dict) -> No
         source = Path(rows[key]["rollout_path"]).resolve()
         if not source.is_relative_to(home.resolve()):
             raise ValueError(f"Rollout outside Codex home: {key}")
+        if key in plan["missing_rollout_ids"]:
+            if source.exists():
+                raise RuntimeError(f"Missing rollout reappeared before backup: {key}")
+            continue
         target = directory / source.relative_to(home.resolve())
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
@@ -149,10 +169,11 @@ def backup(home: Path, directory: Path, rows: dict[str, dict], plan: dict) -> No
 
 
 def delete_archived(server: AppServer | None, home: Path, ids: list[str], include_dependencies: bool,
-                    apply: bool, audit: Audit, backup_dir: Path, reviewed_plan: dict | None = None) -> dict:
+                    apply: bool, audit: Audit, backup_dir: Path, reviewed_plan: dict | None = None,
+                    allow_missing_rollouts: bool = False) -> dict:
     rows, spawned = catalog(home)
     refs = references(rows, home)
-    plan = plan_deletion(rows, spawned, refs, ids, include_dependencies)
+    plan = plan_deletion(rows, spawned, refs, ids, include_dependencies, allow_missing_rollouts)
     if reviewed_plan is not None and reviewed_plan != plan:
         raise RuntimeError("Scope changed since confirmation; preview again.")
     before = snapshot(rows, plan)
@@ -165,7 +186,8 @@ def delete_archived(server: AppServer | None, home: Path, ids: list[str], includ
     backup(home, backup_dir, rows, plan)
     audit.record("archive_backup_completed", directory=str(backup_dir))
     current, current_spawned = catalog(home)
-    fresh = plan_deletion(current, current_spawned, references(current, home), ids, include_dependencies)
+    fresh = plan_deletion(current, current_spawned, references(current, home), ids, include_dependencies,
+                          allow_missing_rollouts)
     if fresh != plan or snapshot(current, fresh) != before:
         raise RuntimeError("Thread state changed while backing up; preview again before retrying.")
     completed = []
@@ -178,7 +200,7 @@ def delete_archived(server: AppServer | None, home: Path, ids: list[str], includ
         if snapshot(now, {"affected_ids": [key]})[key] != before[key]:
             raise RuntimeError(f"Thread changed after backup: {key}; deletion stopped.")
         # Recheck the entire remaining cascade, including forks created after the backup.
-        remaining = plan_deletion(now, now_spawned, references(now, home), [key], True)
+        remaining = plan_deletion(now, now_spawned, references(now, home), [key], True, allow_missing_rollouts)
         if not set(remaining["affected_ids"]) <= set(plan["affected_ids"]):
             raise RuntimeError("New dependency outside backed-up scope; deletion stopped.")
         audit.record("archive_delete_requested", thread_id=key)
@@ -200,23 +222,27 @@ def delete_archived(server: AppServer | None, home: Path, ids: list[str], includ
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    import cleaner_language as ui
+    parser = ui.parser("預覽並刪除明確選定的本機封存對話; 執行前會備份與檢查相依項目", __doc__)
     selection = parser.add_mutually_exclusive_group(required=True)
     selection.add_argument("--ids-file", type=Path, help="JSON array of exact local thread IDs")
     selection.add_argument("--interactive", action="store_true", help="Preview selected project archives, then confirm")
     parser.add_argument("--include-archived-dependencies", action="store_true")
+    parser.add_argument("--allow-missing-rollouts", action="store_true",
+                        help="Review archived local metadata even when its rollout is already missing")
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--codex-home", type=Path, default=Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))))
     parser.add_argument("--codex", help="Installed Codex executable")
     parser.add_argument("--output-dir", type=Path, default=Path(__file__).resolve().parent)
     args = parser.parse_args()
+    ui.configure(args)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     audit = Audit(args.output_dir / "logs" / ("archive-delete-" + stamp))
     try:
         reviewed_plan = None
         home = args.codex_home.resolve(strict=True)
         if args.interactive:
-            cwd = input("Project folder (empty to cancel): ").strip().strip('"')
+            cwd = input(ui.text("專案資料夾 (空白取消): ", "Project folder (empty to cancel): ")).strip().strip('"')
             if not cwd:
                 return 0
             project = Path(cwd).resolve(strict=True)
@@ -224,12 +250,19 @@ def main() -> int:
             ids = [key for key, row in rows.items() if row["archived"] == 1 and
                    row["thread_source"] == "user" and Path(row["cwd"]).resolve() == project]
             args.include_archived_dependencies = True
-            plan = plan_deletion(rows, spawned, references(rows, home), ids, True)
+            if not ids:
+                print(ui.text("此專案沒有本機封存對話", "This project has no local archived conversations"))
+                return 0
+            plan = plan_deletion(rows, spawned, references(rows, home), ids, True, args.allow_missing_rollouts)
             for key in plan["delete_order"]:
                 print(f"{key}  {(rows[key].get('name') or rows[key].get('title') or '(hidden)')[:100]}")
-            print(f"Selected: {len(ids)}; total including archived forks/children: {len(plan['affected_ids'])}")
+            print(ui.text("已選 {count} 個; 包含封存的分支與子對話共 {total} 個", "Selected: {count}; total including archived forks/children: {total}", count=len(ids), total=len(plan['affected_ids'])))
+            if plan["missing_rollout_ids"]:
+                print(ui.text("其中 {count} 個內容檔案已遺失; 將備份殘留資料後刪除, 遺失的內容無法備份",
+                              "{count} rollout files are already missing. Remaining metadata will be backed up; missing content cannot be backed up",
+                              count=len(plan["missing_rollout_ids"])))
             audit.record("interactive_archive_preview", **plan)
-            if input("Permanent deletion after backup. Type DELETE to confirm: ").strip() != "DELETE":
+            if input(ui.text("備份後永久刪除, 無法在 App 還原; 輸入 DELETE 確認: ", "Permanent deletion after backup. Type DELETE to confirm: ")).strip() != "DELETE":
                 audit.record("archive_deletion_cancelled")
                 return 0
             args.apply = True
@@ -240,16 +273,18 @@ def main() -> int:
             raise ValueError("IDs file must be a JSON array.")
         if not args.apply:
             delete_archived(None, home, ids, args.include_archived_dependencies, False, audit,
-                            args.output_dir / "backups" / ("archive-delete-" + stamp))
-            print(f"Preview complete. Log: {audit.path}")
+                            args.output_dir / "backups" / ("archive-delete-" + stamp),
+                            allow_missing_rollouts=args.allow_missing_rollouts)
+            print(ui.text("預覽完成; 日誌: {path}", "Preview complete. Log: {path}", path=audit.path))
             return 0
         executable = args.codex or shutil.which("codex")
         if executable is None:
             raise FileNotFoundError("Codex CLI not found; pass --codex.")
         with closing(AppServer(executable, home)) as server:
             delete_archived(server, home, ids, args.include_archived_dependencies, args.apply, audit,
-                            args.output_dir / "backups" / ("archive-delete-" + stamp), reviewed_plan)
-        print(f"Done. Log: {audit.path}")
+                            args.output_dir / "backups" / ("archive-delete-" + stamp), reviewed_plan,
+                            args.allow_missing_rollouts)
+        print(ui.text("已完成; 日誌: {path}", "Done. Log: {path}", path=audit.path))
         return 0
     except Exception:
         audit.record("archive_deletion_failed", traceback=traceback.format_exc(),

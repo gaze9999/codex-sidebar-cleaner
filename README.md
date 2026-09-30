@@ -11,8 +11,12 @@
 2. **Verify, scan, reconcile with cloud, then clean**：檢查 → 全日期掃描（含專案）→ 要求 App 核對 → 等待 App 核對完成 → 清理已確認刪除的索引。
    App 核對後若沒有待清索引，流程會直接完成，不會要求再次退出；只有實際需要清理時才等待第 2 次退出。
 3. **Organize local tasks**：先檢查，再把符合條件的 local tasks 移到「本機 Codex」section，與雲端核對清理分開執行。
-4. **Delete selected local archived threads**: 輸入本機專案資料夾, 預覽該專案的封存對話與相依項目; 輸入 `DELETE` 確認後備份並刪除
-5. **Exit**: 離開
+4. **清理無法刪除的已封存對話 (本機 / 雲端)**: 本機會預覽, 備份並檢查相依項目後刪除; 雲端會開啟 ChatGPT 封存管理, 並提供刪除後清理 Codex 殘留索引的流程
+5. **移除選定的側邊欄舊專案參照**: 只移除明確核對的本機參照, 不刪除雲端內容
+6. **分析側邊欄截圖並建立精確封存請求**: Windows 可擷取截圖文字; macOS 使用已核對的標題 JSON; 同名或模糊比對須另外核對, 不直接封存
+7. **離開**
+8. **切換中英文**: 預設繁體中文, 英文可由此切換, 或執行 `start.cmd en` / `sh start.command en`
+9. **執行已核對的側邊欄修正清單**: 可選擇計畫 JSON, 或以 Enter 使用當地 `logs/pending-sidebar-reference-plan.json`; 重新檢查帳戶與參照後才備份及修改
 
 整理會把未封存、未指派專案、未放入其他 section 的本機 Codex 任務移到「本機 Codex」。不存在時建立，同名 section 存在時重用；同名多個則停止。保留內容、釘選、專案、其他 section 及封存狀態。
 
@@ -32,7 +36,7 @@ python organize_local_threads.py --apply --section-name "我的本機任務"
 
 使用 `delete_archived_threads.py` 的官方 `thread/delete` 介面, 先刪引用歷史的 fork 與 spawned 子對話, 再刪原對話, 可處理隱藏 fork 讓全部刪除失敗的情況
 
-選單第 4 項依輸入的專案資料夾選出封存 user threads, 顯示完整 ID 與相依項目供確認; 空白或未輸入 `DELETE` 就取消. 活動中 fork / 子對話會阻擋整批刪除, 不會自動封存
+選單第 4 項選「本機」後, 依輸入的專案資料夾選出封存 user threads, 顯示完整 ID 與相依項目供確認; 空白或未輸入 `DELETE` 就取消; 活動中 fork / 子對話會阻擋整批刪除, 不會自動封存
 
 也可建立 UTF-8 JSON 陣列, 只放明確選定的本機 thread ID, 先預覽再執行:
 
@@ -42,13 +46,17 @@ python delete_archived_threads.py --ids-file selected-archives.json --include-ar
 python delete_archived_threads.py --ids-file selected-archives.json --include-archived-dependencies --apply
 ```
 
-`--include-archived-dependencies` 明確允許納入引用所選歷史的封存 fork; spawned descendants 屬官方刪除的連帶範圍, 也會先盤點, 備份與確認封存狀態. 不認得的 ID, 雲端對話, 缺少 rollout, 循環引用或備份後有狀態 / 範圍變動都會停止
+`--include-archived-dependencies` 明確允許納入引用所選歷史的封存 fork; spawned descendants 屬官方刪除的連帶範圍, 也會先盤點, 備份與確認封存狀態; 不認得的 ID, 雲端對話, 循環引用或備份後有狀態 / 範圍變動都會停止
+
+內容檔案已遺失但本機封存資料仍存在時, 可加 `--allow-missing-rollouts` 使用官方刪除介面清除殘留資料; 選單第 4 項的本機流程已啟用這個檢查模式, 仍須預覽與輸入 `DELETE`; 備份保存剩餘資料與 `missing_rollout_ids`, 遺失內容無法備份; 此選項不放寬對活動中對話或雲端資料的限制; 已用 Codex CLI 0.159.2 與隔離資料驗證這類刪除
 
 支援 `--codex`, `--codex-home`, `--output-dir`. 預覽不啟動 app-server, 不刪除資料. 實際刪除需要相容的 Codex CLI; 不需要退出 App, 畫面可能需重新開啟才更新. macOS 僅以標準庫與測試資料驗證, 尚未操作正式對話
 
 `backups/archive-delete-時間/` 保存 SQLite 一致備份, 所有受影響 rollout, 現存歷史 / 記憶 / goals / queue 資料庫, 桌面分類狀態與 manifest; `logs/archive-delete-時間/` 保存計畫及每筆結果. 正式刪除無法在 App 復原, 備份供人工復原評估, 不可直接覆蓋使用中的資料庫. 逐筆成功即提交, 中途失敗不會回滾先前成功的刪除; 先核對 log, 僅以剩餘 ID 建立新計畫再重試
 
-ChatGPT 雲端封存對話請從 ChatGPT 網頁的設定 > 資料控制 > 已封存的對話 > 管理, 逐筆刪除; 已實際確認此路徑可處理 Codex 顯示刪除失敗的對話. 本工具不自動登入或刪除雲端對話, 也不把本機索引消失視為雲端已刪除
+選單第 4 項選「雲端」可直接開啟 ChatGPT 網頁的設定 > 資料控制 > 已封存的對話 > 管理; 使用同一帳號核對標題與日期, 在網頁逐筆刪除並確認; 開啟網頁的結束代碼為 2, 表示仍待網頁操作, 不代表刪除完成
+
+網頁已刪除但 Codex 仍顯示時, 再選雲端流程的第 2 項, 輸入已刪除的精確 ID; 工具顯示本機帳戶, 標題與專案, 輸入 `CLOUD DELETED` 後才建立確認計畫, 預覽並執行原有備份及快取清理; 原始網頁刪除由使用者確認, 本工具未獨立驗證雲端刪除; 不會只憑無法載入或清單缺席就刪除, 不自動登入或擷取 Token, 不將本機索引消失視為雲端已刪除
 
 ## 紀錄與備份
 

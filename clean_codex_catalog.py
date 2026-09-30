@@ -25,6 +25,7 @@ import sys
 import time
 import traceback
 from typing import TypedDict, cast
+import cleaner_language as ui
 
 
 def discover_deleted(roots: list[Path]) -> dict[str, dict[str, object]]:
@@ -92,6 +93,99 @@ def previous_evidence(directory: Path) -> dict[str, dict[str, object]]:
     return evidence
 
 
+def discover_load_failures(roots: list[Path]) -> tuple[list[Path], dict[str, dict[str, object]]]:
+    files = {source.resolve() for root in roots for source in root.rglob("codex-desktop-*.log")}
+    if not files:
+        return [], {}
+    latest = max(files, key=lambda source: (source.stat().st_mtime_ns, str(source)))
+    session = re.match(r"(codex-desktop-[0-9a-f-]{36}-\d+)-t\d+-", latest.name)
+    sources = sorted(source for source in files if source.parent == latest.parent and
+                     (source.name.startswith(session[1] + "-t") if session else source == latest))
+    events: dict[str, tuple[tuple[str, str, int], dict[str, object] | None]] = {}
+    decoder = json.JSONDecoder()
+    uuid = r"[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}"
+    for source in sources:
+        with source.open(encoding="utf-8", errors="replace") as stream:
+            for number, line in enumerate(stream, 1):
+                detail = None
+                if "sa_server_request_failed" in line and "errorMessage=" in line:
+                    try:
+                        body, _ = decoder.raw_decode(line.split("errorMessage=", 1)[1])
+                    except json.JSONDecodeError:
+                        continue
+                    error = body.get("detail") if isinstance(body, dict) else None
+                    if not isinstance(error, dict):
+                        continue
+                    thread_id, code = error.get("conversation_id"), error.get("code")
+                    if not isinstance(thread_id, str) or not re.fullmatch(uuid, thread_id) or not isinstance(code, str):
+                        continue
+                    detail = {"source_kind": "chatgpt", "error_code": code,
+                              "message": error.get("message"),
+                              "category": "confirmed_deleted" if code == "conversation_deleted" else "cloud_load_failed"}
+                elif re.search(r"\bmethod=thread/(?:read|resume)(?:\s|$)", line):
+                    match = re.search(rf"\bconversationId=({uuid})(?:\s|$)", line)
+                    if match is None:
+                        continue
+                    thread_id = match[1]
+                    if "response_routed" in line and re.search(r"\berrorCode=null(?:\s|$)", line):
+                        # 後續成功的載入不再列為本次 session 的未解錯誤。
+                        detail = None
+                    elif "Request failed" in line and "error=" in line:
+                        try:
+                            error, _ = decoder.raw_decode(line.split("error=", 1)[1])
+                        except json.JSONDecodeError:
+                            continue
+                        if not isinstance(error, dict) or not isinstance(error.get("message"), str):
+                            continue
+                        detail = {"source_kind": "codex", "error_code": error.get("code"),
+                                  "message": error["message"], "category": "thread_load_failed"}
+                    else:
+                        continue
+                else:
+                    continue
+                timestamp = line.split(" ", 1)[0]
+                order = (timestamp, str(source), number)
+                if thread_id not in events or order > events[thread_id][0]:
+                    if detail is not None:
+                        detail.update(source=str(source), line=number, timestamp=timestamp)
+                    events[thread_id] = (order, detail)
+    return sources, {key: detail for key, (_, detail) in events.items() if detail is not None}
+
+
+def diagnose_load_failures(connection: sqlite3.Connection, roots: list[Path], audit: Audit) -> dict:
+    sources, failures = discover_load_failures(roots)
+    entries = []
+    for thread_id, failure in sorted(failures.items()):
+        rows = connection.execute(
+            "SELECT host_id,display_title,source_kind,project_id FROM local_thread_catalog WHERE thread_id=?",
+            (thread_id,),
+        ).fetchall()
+        entries.append({"thread_id": thread_id, **failure,
+                        "catalog_entries": [{"host_id": host, "title": title, "source_kind": kind,
+                                             "project_id": project} for host, title, kind, project in rows],
+                        "confirmed_deleted_catalog_target": failure["category"] == "confirmed_deleted"
+                        and len(rows) == 1 and rows[0][2] == "chatgpt"})
+    report = {"read_only": True, "scope": "latest_desktop_log_session",
+              "sources": [str(source) for source in sources], "failures": entries,
+              "automatic_removals": [], "live_cloud_verified": False, "ui_verified": False,
+              "limitations": [
+                  "Logged load failures are not proof of cloud deletion or current sidebar visibility.",
+                  "Permission errors, not-found responses, unloaded threads and timeouts are not deletion evidence.",
+                  "Project lists fetched directly by the app can contain entries absent from the local catalog; catalog cleanup cannot remove those list items.",
+              ]}
+    path = audit.directory / "load-diagnostics.json"
+    path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    outside = sum(not entry["catalog_entries"] for entry in entries)
+    audit.record("load_diagnostics", logged_failures=len(entries), failures_outside_catalog=outside,
+                 sources_found=len(sources), report=str(path), automatic_removals=0,
+                 live_cloud_verified=False, ui_verified=False)
+    if entries:
+        print(ui.text("最新 App 日誌有 {count} 個對話載入錯誤; {outside} 個不在本機索引; 這些錯誤不是刪除證據; 報告: {path}", "Latest app session: {count} logged conversation load failures; {outside} have no local catalog row. These errors are not deletion evidence. Report: {path}", count=len(entries), outside=outside, path=path), flush=True)
+    elif not sources:
+        print(ui.text("找不到桌面日誌; 無法診斷對話載入錯誤", "No desktop logs found. Conversation load errors could not be diagnosed."), flush=True)
+    return report
+
+
 def validate_schema(connection: sqlite3.Connection) -> None:
     required = {
         "local_thread_catalog": {"host_id", "thread_id", "display_title", "source_kind", "project_id", "missing_candidate"},
@@ -128,7 +222,7 @@ def verify(connection: sqlite3.Connection, ids: list[str], audit: Audit) -> None
                                "checkpoint_pending": bool(pending)} for complete, last, pending in sync],
                  all_cloud_conversations_verified=False,
                  limitation="No per-conversation live lookup. Unseen failures and old/project-specific ghosts may remain.")
-    print(f"Known deleted entries remaining: {len(remaining)}. See log for project and sync counts.", flush=True)
+    print(ui.text("剩餘已確認刪除索引: {count}; 專案與同步數量請查看日誌", "Known deleted entries remaining: {count}. See log for project and sync counts.", count=len(remaining)), flush=True)
 
 
 def scan_projects(connection: sqlite3.Connection, state_path: Path, audit: Audit) -> None:
@@ -213,7 +307,7 @@ class Audit:
             stream.write(json.dumps(entry, ensure_ascii=False) + "\n")
             stream.flush()
             os.fsync(stream.fileno())
-        print(f"{entry['time']} {event}", flush=True)
+        print(f"{entry['time']} {ui.event_message(event)}", flush=True)
 
 
 def app_running() -> bool:
@@ -512,7 +606,7 @@ def reset_sync(database: Path, audit: Audit, backup: Path) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = ui.parser(__doc__, "Inspect and clean local ChatGPT catalog rows backed by confirmed deletion evidence. Preview by default; apply waits for the desktop app to exit and creates a backup.")
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--reconcile", action="store_true")
     parser.add_argument("--verify", action="store_true", help="Read-only verification, including project rows")
@@ -526,6 +620,7 @@ def main() -> int:
     parser.add_argument("--output-dir", type=Path, default=Path(__file__).resolve().parent)
     parser.add_argument("--wait-seconds", type=int, default=1800)
     args = parser.parse_args()
+    ui.configure(args)
     if args.verify and args.apply:
         parser.error("--verify cannot be combined with --apply")
     if args.align_recents and args.reconcile:
@@ -561,17 +656,25 @@ def main() -> int:
                    recents_plan["remove_ids"] if recents_plan else sorted(evidence))
             rows = targets(reader, ids)
             verify(reader, sorted(evidence), audit)
+            diagnostics = diagnose_load_failures(reader, roots, audit)
+        unresolved = [entry for entry in diagnostics["failures"]
+                      if entry["source_kind"] == "chatgpt" and not entry["confirmed_deleted_catalog_target"]]
         audit.record("inspection", rows=[{"thread_id": r[1], "title": r[2]} for r in rows])
         if not args.apply:
-            print(f"Read-only check: {len(rows)} matching entries. Log: {audit.path}")
+            print(ui.text("唯讀檢查: {count} 個符合項目; 日誌: {path}", "Read-only check: {count} matching entries. Log: {path}", count=len(rows), path=audit.path))
             return 0
         if not cleanup_requires_desktop_exit(apply=args.apply, reconcile=args.reconcile, rows=rows):
-            audit.record("no_op", reason="No matching stale rows; desktop exit is not required.")
-            print(f"No matching stale entries. Cleanup finished without closing Codex. Log: {audit.path}",
-                  flush=True)
+            audit.record("no_op", reason="No confirmed-deleted catalog entries matched; other sidebar or loading errors may remain.",
+                         catalog_rows_deleted=0, ui_verified=False)
+            print(ui.text("沒有符合已確認刪除的索引, 未修改資料; 其他側邊欄或載入錯誤可能仍存在; 日誌: {path}", "No confirmed-deleted catalog entries matched. No catalog changes were made. Other sidebar or loading errors may remain. Log: {path}", path=audit.path), flush=True)
+            if unresolved:
+                audit.record("cloud_sidebar_review_required", thread_ids=[entry["thread_id"] for entry in unresolved],
+                             reason="These cloud list items cannot be removed by deleting local catalog rows.")
+                print(ui.text("仍需核對雲端側邊欄; 請透過已登入的 Codex app 封存確認過的 ID; 只重新同步無法清除這些項目", "Cloud sidebar review is still required. Use the signed-in Codex app to archive reviewed IDs; reconciliation alone cannot clear these entries."), flush=True)
+                return 2
             return 0
         audit.record("waiting_for_desktop_exit", timeout_seconds=args.wait_seconds)
-        print("Quit Codex/ChatGPT completely. Keep this terminal open.", flush=True)
+        print(ui.text("請完全退出 Codex/ChatGPT 並保留此外部視窗", "Quit Codex/ChatGPT completely. Keep this terminal open."), flush=True)
         deadline = time.monotonic() + args.wait_seconds
         while app_running():
             if time.monotonic() >= deadline:
@@ -580,6 +683,8 @@ def main() -> int:
         time.sleep(2)
         # 退出後重新掃描，納入剛重現且延遲寫入日誌的其他對話。
         evidence.update(discover_deleted(roots))
+        if recents_plan is None and confirmed_plan is None:
+            ids = sorted(evidence)
         with closing(connect(database, "ro")) as reader:
             validate_schema(reader)
         audit.record("final_log_evidence", confirmed_deleted_count=len(evidence), evidence=evidence)
@@ -588,7 +693,12 @@ def main() -> int:
         else:
             cleanup(database, audit, ids,
                     output / "backups" / (run.name + ".sqlite"), recents_plan, confirmed_plan)
-        print(f"Done. Reopen Codex and verify. Log: {audit.path}", flush=True)
+        if not args.reconcile and unresolved:
+            audit.record("cloud_sidebar_review_required", thread_ids=[entry["thread_id"] for entry in unresolved],
+                         reason="Catalog cleanup completed, but other cloud sidebar errors remain unverified.")
+            print(ui.text("索引清理已完成; 雲端側邊欄仍待核對; 日誌: {path}", "Catalog cleanup finished; cloud sidebar review remains pending. Log: {path}", path=audit.path), flush=True)
+            return 2
+        print(ui.text("已完成; 請重開 Codex 核對; 日誌: {path}", "Done. Reopen Codex and verify. Log: {path}", path=audit.path), flush=True)
         return 0
     except Exception:
         audit.record("failed", traceback=traceback.format_exc())
