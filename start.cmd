@@ -5,9 +5,11 @@ set "cleaner_script=clean_codex_catalog.py"
 echo 1. Clean confirmed deleted entries (includes projects)
 echo 2. Verify, scan, reconcile with cloud, then clean
 echo 3. Organize local tasks into a separate section
-echo 4. Exit
-choice /c 1234 /n /m "Choose [1-4]: "
-if errorlevel 4 exit /b 0
+echo 4. Delete selected local archived threads
+echo 5. Exit
+choice /c 12345 /n /m "Choose [1-5]: "
+if errorlevel 5 exit /b 0
+if errorlevel 4 goto archives
 if errorlevel 3 goto organize
 if errorlevel 2 goto workflow
 set "cleaner_args=--apply"
@@ -19,6 +21,10 @@ goto run
 :organize
 set "cleaner_script=organize_local_threads.py"
 set "cleaner_args=--apply"
+goto run
+:archives
+set "cleaner_script=delete_archived_threads.py"
+set "cleaner_args=--interactive"
 :run
 echo Logs: %~dp0logs
 echo Cache cleanup needs Codex closed. Section organization does not.

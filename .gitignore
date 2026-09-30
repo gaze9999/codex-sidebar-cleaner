@@ -16,6 +16,7 @@ project-scan*.json
 project-scan*.csv
 ipad-recents-plan*.json
 before-sections*.json
+selected-archives*.json
 
 # Python 執行環境與快取
 __pycache__/
