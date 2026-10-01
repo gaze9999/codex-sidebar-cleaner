@@ -49,3 +49,6 @@ desktop.ini
 dist/
 build/
 *.egg-info/
+
+# Local project agent instructions
+/AGENTS.md
