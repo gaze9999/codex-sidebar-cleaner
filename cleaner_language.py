@@ -1,12 +1,11 @@
-"""Console language selection; audit event names and saved data stay stable."""
+"""English console messages; audit event names and saved data stay stable."""
 from __future__ import annotations
 
 import argparse
 import os
-import sys
 
 
-LANGUAGES = ("zh-TW", "en")
+LANGUAGES = ("en",)
 EVENTS = {
     "started": ("開始檢查", "Inspection started"),
     "log_evidence": ("已讀取刪除證據", "Deletion evidence loaded"),
@@ -70,12 +69,11 @@ EVENTS = {
 
 
 def language() -> str:
-    value = os.environ.get("SIDEBAR_CLEANER_LANG", "zh-TW")
-    return value if value in LANGUAGES else "zh-TW"
+    return "en"
 
 
 def text(chinese: str, english: str, **fields: object) -> str:
-    return (english if language() == "en" else chinese).format(**fields)
+    return english.format(**fields)
 
 
 def event_message(event: str) -> str:
@@ -85,19 +83,12 @@ def event_message(event: str) -> str:
 
 
 def parser(chinese: str, english: str) -> argparse.ArgumentParser:
-    # Select before parsing so --lang en --help also uses the English description
-    args = sys.argv[1:]
-    for index, value in enumerate(args):
-        if value == "--lang" and index + 1 < len(args) and args[index + 1] in LANGUAGES:
-            os.environ["SIDEBAR_CLEANER_LANG"] = args[index + 1]
-        elif value.startswith("--lang=") and value[7:] in LANGUAGES:
-            os.environ["SIDEBAR_CLEANER_LANG"] = value[7:]
-    result = argparse.ArgumentParser(description=text(chinese, english))
+    result = argparse.ArgumentParser(description=english)
     result.add_argument("--lang", choices=LANGUAGES, default=language(),
-                        help="介面語言, 預設 zh-TW / Interface language, default zh-TW")
+                        help="Display language (English only)")
     return result
 
 
 def configure(args: argparse.Namespace) -> None:
-    # Child stages inherit the same language without changing their CLI contracts
-    os.environ["SIDEBAR_CLEANER_LANG"] = args.lang
+    # Child stages use English even if an older caller passes another language.
+    os.environ["SIDEBAR_CLEANER_LANG"] = "en"

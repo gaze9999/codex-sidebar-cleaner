@@ -54,7 +54,7 @@ def inspect_sidebar_references(home: Path, audit: Audit) -> None:
         report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         audit.record("sidebar_reference_inspection", candidate_count=len(rows), report=str(report_path))
         if rows:
-            print(ui.text("專案快取中缺少 {count} 個側邊欄參照; 使用 --review-sidebar-references 核對, 缺少快取不是刪除證據", "{count} sidebar project references are absent from the project cache. Review them with --review-sidebar-references; absence is not deletion evidence.", count=len(rows)), flush=True)
+            print(ui.text("專案快取中缺少 {count} 個側邊欄參照; 使用 --review-sidebar-references 核對, 缺少快取不是刪除證據", "{count} project links need review. Use --review-sidebar-references; missing cache does not prove deletion.", count=len(rows)), flush=True)
     except (KeyError, TypeError, ValueError) as error:
         audit.record("sidebar_reference_inspection_unavailable", reason=str(error), automatic_removals=0)
         print(ui.text("無法確認側邊欄資料格式; 不會自動移除參照", "Sidebar reference schema could not be verified; no references will be removed automatically."), flush=True)
@@ -87,13 +87,13 @@ def reconciliation_complete(home: Path) -> bool:
 
 def wait_for_reconciliation(home: Path, timeout: int, audit: Audit) -> None:
     audit.record("waiting_for_app_reconciliation", timeout_seconds=timeout)
-    print(ui.text("請重開 Codex 並保留此外部視窗; 等待 App 完成清單核對再清理", "Reopen Codex now and keep THIS console open. Waiting for app reconciliation before cleanup."), flush=True)
+    print(ui.text("請重開 Codex 並保留此外部視窗; 等待 App 完成清單核對再清理", "Reopen Codex and keep this terminal open. Waiting for app sync before cleanup."), flush=True)
     deadline = time.monotonic() + timeout
     while True:
         if reconciliation_complete(home):
             audit.record("app_reconciliation_observed", live_cloud_verified=False,
                          limitation="App sync-state completion only; not per-conversation verification across all dates.")
-            print(ui.text("App 清單核對已完成; 正在檢查待清項目", "App reconciliation finished. Checking whether cleanup is needed."), flush=True)
+            print(ui.text("App 清單核對已完成; 正在檢查待清項目", "App sync finished. Checking for entries to clean."), flush=True)
             return
         if time.monotonic() >= deadline:
             raise TimeoutError("App reconciliation did not finish; cleanup was not run.")
@@ -167,7 +167,7 @@ def run_workflow(args: argparse.Namespace, audit: Audit) -> int:
     audit.record("workflow_completed", apply=args.apply,
                  app_reconciliation_pending=False, live_cloud_verified=False)
     if args.apply:
-        print(ui.text("已完成 App 清單核對與已確認刪除的索引清理; 其他側邊欄或載入錯誤可能仍存在, 請查看 load-diagnostics.json 並重開 Codex", "App reconciliation and confirmed-deleted catalog cleanup finished. Other sidebar or loading errors may remain; inspect load-diagnostics.json. Reopen Codex."), flush=True)
+        print(ui.text("已完成 App 清單核對與已確認刪除的索引清理; 其他側邊欄或載入錯誤可能仍存在, 請查看 load-diagnostics.json 並重開 Codex", "Sync and confirmed-deleted cache cleanup finished. Reopen Codex. If entries or loading errors remain, check load-diagnostics.json."), flush=True)
     else:
         print(ui.text("預覽完成; 使用 --apply 執行清單核對與清理", "Preview finished. Use --apply to reconcile and clean."), flush=True)
     return 0

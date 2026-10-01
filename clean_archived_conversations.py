@@ -27,7 +27,7 @@ UUID = re.compile(r"[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}")
 
 def choose_source() -> str | None:
     print(ui.text("1. 本機 Codex 封存對話\n2. ChatGPT 雲端封存對話\n3. 取消",
-                  "1. Local Codex archives\n2. ChatGPT cloud archives\n3. Cancel"))
+                  "1. Local Codex archives\n2. ChatGPT archives\n3. Cancel"))
     choice = input(ui.text("請選擇 [1-3]: ", "Choose [1-3]: ")).strip()
     if choice in ("", "3"):
         return None
@@ -71,15 +71,15 @@ def run_child(script: str, args, flags: list[str], audit: Audit) -> int:
 
 def cloud_workflow(args, audit: Audit) -> int:
     print(ui.text("1. 開啟 ChatGPT, 從封存管理逐筆刪除\n2. 清理已在網頁刪除, 但 Codex 仍顯示的索引\n3. 取消",
-                  "1. Open ChatGPT and delete individual archives in its manager\n2. Clean Codex entries already deleted in ChatGPT\n3. Cancel"))
+                  "1. Open ChatGPT archive manager\n2. Clean cache for chats already deleted in ChatGPT\n3. Cancel"))
     choice = input(ui.text("請選擇 [1-3]: ", "Choose [1-3]: ")).strip()
     if choice in ("", "3"):
         return 0
     if choice == "1":
         print(ui.text("請使用相同帳號, 在 資料控制 > 已封存的對話 > 管理 核對標題與日期, 再逐筆按刪除並確認",
-                      "Use the same account. In Data controls > Archived chats > Manage, check each title and date, then delete and confirm individually"))
+                      "Use the same account. Go to Data controls > Archived chats > Manage. Check each title and date, then delete each chat"))
         print(ui.text("此選項只開啟管理入口; 網頁刪除完成後, 可再次選第 2 項處理 Codex 殘留索引",
-                      "This option opens the manager entry point. After deletion in ChatGPT, choose option 2 to handle remaining Codex entries"))
+                      "After deleting chats in ChatGPT, use option 2 to clean any remaining Codex cache entries"))
         opened = webbrowser.open(CLOUD_SETTINGS_URL)
         audit.record("cloud_archive_manager_handoff", url=CLOUD_SETTINGS_URL, browser_opened=opened,
                      cloud_deleted=False, live_cloud_verified=False, status="manual_cloud_deletion_pending")
@@ -89,7 +89,7 @@ def cloud_workflow(args, audit: Audit) -> int:
     if choice != "2":
         raise ValueError("Invalid cloud archive operation")
     print(ui.text("僅輸入已在相同帳號永久刪除的對話 ID; 無法載入或清單缺席不能當成刪除證據",
-                  "Enter only IDs permanently deleted in the same ChatGPT account. Loading errors or absence from a list are insufficient"))
+                  "Only use IDs permanently deleted in the same ChatGPT account. A loading error or missing entry does not prove deletion"))
     raw = input(ui.text("精確 ID, 以逗號或空白分隔 (空白取消): ", "Exact IDs, separated by commas or spaces (empty to cancel): ")).strip()
     if not raw:
         return 0
@@ -101,7 +101,7 @@ def cloud_workflow(args, audit: Audit) -> int:
     audit.record("cloud_archive_cache_preview", host_id=plan["host_id"], entries=plan["entries"],
                  cloud_deletion_confirmed=False, live_cloud_verified=False)
     answer = input(ui.text("確認以上對話已在 ChatGPT 永久刪除, 並同意備份後移除這些本機索引; 輸入 CLOUD DELETED: ",
-                           "Confirm these chats were permanently deleted in ChatGPT and allow backed-up local cache cleanup. Type CLOUD DELETED: ")).strip()
+                           "Confirm these chats were permanently deleted in ChatGPT. Back up and remove their local cache. Type CLOUD DELETED: ")).strip()
     if answer != "CLOUD DELETED":
         audit.record("archive_deletion_cancelled")
         return 0

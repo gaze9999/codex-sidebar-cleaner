@@ -60,6 +60,6 @@ python compare_cloud_catalog.py --cloud-snapshot cloud-snapshot.json
 
 ## 資料位置與等待
 
-各 CLI 的 `--help` 列出可用選項; 雙語維護 CLI 可加 `--lang en` 切換英文; `--codex-home` 指定 Codex 資料目錄, `--output-dir` 指定 logs / backups 的父目錄; 使用自訂 `--database` 時須提供對應的 `--codex-home`, `--log-root` 可重複指定
+各 CLI 的 `--help` 列出可用選項; 介面統一使用英文, `--lang en` 可省略; `--codex-home` 指定 Codex 資料目錄, `--output-dir` 指定 logs / backups 的父目錄; 使用自訂 `--database` 時須提供對應的 `--codex-home`, `--log-root` 可重複指定
 
 `maintain_sidebar.py` 先檢查與掃描, 依核對計畫處理參照後要求 App 重新同步; 依提示退出與重開 App, 預設最多等待 30 分鐘; 同步完成後只清除有刪除證據的索引; 若無待清索引就不要求再次退出; `--wait-seconds` 與 `--reconcile-wait-seconds` 可調整等待時間

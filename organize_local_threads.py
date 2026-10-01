@@ -1,6 +1,6 @@
-"""將尚未分類的本機 Codex 任務移至獨立區段。預設預覽，加 --apply 執行。
+"""Move unassigned local Codex chats into a section. Preview unless --apply is set.
 
-保留專案、釘選與其他區段的分類；不刪除對話。需要相容的 Codex CLI。
+Keeps existing projects, pins and sections. Requires a compatible Codex CLI.
 """
 from __future__ import annotations
 
@@ -190,7 +190,7 @@ def main() -> int:
     import cleaner_language as ui
     parser = ui.parser("整理未封存的本機對話至獨立側邊欄區段; 預設只預覽", __doc__)
     parser.add_argument("--apply", action="store_true")
-    parser.add_argument("--section-name", default="本機 Codex")
+    parser.add_argument("--section-name", default="Local Codex")
     parser.add_argument("--codex-home", type=Path, default=Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))))
     parser.add_argument("--codex", help="Path to the installed Codex executable")
     parser.add_argument("--output-dir", type=Path, default=Path(__file__).resolve().parent)

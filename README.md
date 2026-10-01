@@ -8,7 +8,7 @@
 
 - Windows: 從檔案總管雙擊 `start.cmd`
 - macOS: 在終端機執行 `sh start.command`
-- 預設繁體中文; 主選單按 `L` 切換語言, 也可用 `start.cmd en` / `sh start.command en` 以英文啟動
+- 選單, 操作提示, 完成訊息與錯誤說明統一使用英文, 避免不同作業系統的中文編碼問題; 不需要切換語言
 
 請從 Codex 外部啟動; 需要清理快取時, 依提示完全退出與重開 App, 並保留 cleaner 視窗; macOS 請結束 App, 不只關閉視窗
 
@@ -16,20 +16,20 @@
 
 | 主選單 | 用途 |
 | --- | --- |
-| 1. 修復側邊欄 | 檢查與掃描, 核對舊參照, 等待 App 重新同步, 再清理有刪除證據的索引 |
-| 2. 清理封存對話 | 選擇本機 Codex 或 ChatGPT 雲端流程 |
-| 3. 進階工具 | 已核對的修正清單, 舊專案參照, 封存清單, 本機對話整理與單獨索引清理 |
-| 0. 離開 | 結束工具 |
+| 1. Fix sidebar | 修復側邊欄: 檢查與掃描, 核對舊參照, 等待 App 重新同步, 再清理有刪除證據的索引 |
+| 2. Clean archives | 清理封存: 選擇本機 Codex 刪除, 或 ChatGPT 雲端管理與殘留索引流程 |
+| 3. More tools | 進階工具: 已核對的修正清單, 舊專案參照, 封存清單, 本機對話整理與單獨索引清理 |
+| 0. Exit | 結束工具 |
 
 進階選單按 `0` 返回主選單:
 
 | 進階工具 | 用途 |
 | --- | --- |
-| 1. 執行已核對的修正清單 | 選擇計畫 JSON; 當地有 `logs/pending-sidebar-reference-plan.json` 時可按 Enter 使用 |
-| 2. 移除舊專案參照 | 核對並移除指定的本機參照, 保留雲端專案與對話 |
-| 3. 建立封存清單 | Windows 使用截圖, macOS 使用已核對的標題 JSON; 只建立請求, 不直接封存 |
-| 4. 整理本機對話 | 把未分類且未封存的本機對話移到獨立區段, 保留其他分類與內容 |
-| 5. 只清除已刪除的索引 | 清理已有 `conversation_deleted` 證據的本機 ChatGPT 索引 |
+| 1. Apply a reviewed plan | 執行已核對的修正清單: 選擇計畫 JSON; 當地有 `logs/pending-sidebar-reference-plan.json` 時可按 Enter 使用 |
+| 2. Remove old project links | 移除舊專案參照: 核對並移除指定的本機參照, 保留雲端專案與對話 |
+| 3. Prepare an archive plan | 建立封存清單: Windows 使用截圖, macOS 使用已核對的標題 JSON; 只建立請求, 不直接封存 |
+| 4. Organize local chats | 整理本機對話: 把未分類且未封存的本機對話移到 `Local Codex` 區段, 保留其他分類與內容 |
+| 5. Clean deleted chat cache | 只清除已刪除的索引: 清理已有 `conversation_deleted` 證據的本機 ChatGPT 索引 |
 
 ## 封存對話
 
@@ -45,7 +45,7 @@
 - 本機對話永久刪除無法在 App 還原; 中途失敗時, 先前成功的刪除仍保留, 請先核對日誌再重試
 - Windows 啟動器已操作驗證; macOS 啟動器僅做 shell 語法與隔離路由檢查, 正式資料操作仍須依當地 Codex 版本確認
 
-結束代碼 `0` 表示操作結束 (含取消), `2` 表示仍有項目待處理; 其他代碼請查看畫面與日誌
+`Finished` 表示操作結束 (含取消); `Action needed` 表示仍有項目待處理, 請依上方提示完成; `Stopped` 表示流程停止, 請查看畫面與日誌; 對應結束代碼為 `0`, `2` 與其他非零值
 
 ## 命令列
 

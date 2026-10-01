@@ -1,6 +1,6 @@
-"""刪除明確指定的本機封存對話, 預設只預覽並備妥 fork 相依順序
+"""Preview or delete selected local archives, with backups and dependency checks.
 
-使用官方 thread/delete, 不直接刪改資料庫; 不處理 ChatGPT 雲端對話
+Uses thread/delete for local Codex chats. Does not delete ChatGPT cloud chats.
 """
 from __future__ import annotations
 
@@ -262,7 +262,7 @@ def main() -> int:
                               "{count} rollout files are already missing. Remaining metadata will be backed up; missing content cannot be backed up",
                               count=len(plan["missing_rollout_ids"])))
             audit.record("interactive_archive_preview", **plan)
-            if input(ui.text("備份後永久刪除, 無法在 App 還原; 輸入 DELETE 確認: ", "Permanent deletion after backup. Type DELETE to confirm: ")).strip() != "DELETE":
+            if input(ui.text("備份後永久刪除, 無法在 App 還原; 輸入 DELETE 確認: ", "Delete permanently after backup. Cannot be undone in the app. Type DELETE to confirm: ")).strip() != "DELETE":
                 audit.record("archive_deletion_cancelled")
                 return 0
             args.apply = True

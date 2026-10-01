@@ -1,4 +1,4 @@
-"""依雲端清單快照核對本機索引；唯讀、不將缺席視為已刪除。Python 3.10+。"""
+"""Compare a cloud snapshot with the local chat cache. Read-only; missing chats are not deletion evidence."""
 from __future__ import annotations
 
 import argparse
