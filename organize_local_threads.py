@@ -188,7 +188,7 @@ def organize(server: AppServer, home: Path, name: str, apply: bool, audit: Audit
 
 def main() -> int:
     import cleaner_language as ui
-    parser = ui.parser("整理未封存的本機對話至獨立側邊欄區段; 預設只預覽", __doc__)
+    parser = ui.parser("整理未封存的本機對話至獨立側邊欄區段, 預設只預覽", __doc__)
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--section-name", default="Local Codex")
     parser.add_argument("--codex-home", type=Path, default=Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))))
@@ -217,7 +217,7 @@ def main() -> int:
         audit.record("organization_started", apply=args.apply, codex_home=str(home))
         with closing(AppServer(executable, home)) as server:
             organize(server, home, args.section_name.strip(), args.apply, audit)
-        print(ui.text("已完成; 日誌: {path}", "Done. Log: {path}", path=audit.path))
+        print(ui.text("已完成, 記錄檔: {path}", "Done. Log: {path}", path=audit.path))
         return 0
     except Exception:
         audit.record("organization_failed", traceback=traceback.format_exc(),

@@ -1,6 +1,6 @@
 """從截圖標題及本機歷史索引建立精確對話清理清單, 預設唯讀
 
-OCR 或相似標題不構成刪除證據; 模糊比對只提供建議
+OCR 或相似標題不構成刪除證據, 模糊比對只提供建議
 選定精確 ID 並確認後, 匯出供 Codex app 原生工具執行的封存與還原請求
 本程式不呼叫雲端 API, 不永久刪除對話
 """
@@ -209,7 +209,7 @@ def main() -> int:
         if args.interactive:
             if sys.platform == "win32":
                 args.images = []
-                print(ui.text("逐行輸入截圖檔案路徑; 空白結束", "Enter screenshot file paths, one per line. Empty line finishes."))
+                print(ui.text("逐行輸入截圖檔案路徑, 空白結束", "Enter screenshot file paths, one per line. Empty line finishes."))
                 while value := input(ui.text("截圖: ", "Image: ")).strip().strip('"'):
                     args.images.append(Path(value))
                 if not args.images:
@@ -240,8 +240,8 @@ def main() -> int:
             for index, item in enumerate(plan["matches"], 1):
                 print(f"{index}. {item['title']} | {item['thread_id']} | project={item['project_id']}")
             if plan["unmatched"]:
-                print(ui.text("已排除 {count} 個無法比對的標題; 請核對 OCR 結果", "{count} unmatched titles were excluded. Review OCR corrections before including them.", count=len(plan['unmatched'])))
-            answer = input(ui.text("建立可還原的雲端封存請求; 輸入項目編號 (空白分隔), ALL 或空白只預覽: ", "Prepare reversible cloud archive requests. Select numbers separated by spaces, ALL, or empty to preview only: ")).strip()
+                print(ui.text("已排除 {count} 個無法比對的標題, 請核對 OCR 結果", "{count} unmatched titles were excluded. Review OCR corrections before including them.", count=len(plan['unmatched'])))
+            answer = input(ui.text("建立可還原的雲端封存請求, 輸入項目編號 (空白分隔), ALL 或空白只預覽: ", "Prepare reversible cloud archive requests. Select numbers separated by spaces, ALL, or empty to preview only: ")).strip()
             if answer:
                 numbers = list(range(1, len(plan["matches"]) + 1)) if answer == "ALL" else [int(value) for value in answer.split()]
                 if any(number < 1 or number > len(plan["matches"]) for number in numbers):
@@ -255,7 +255,7 @@ def main() -> int:
         audit.record("screenshot_cleanup_plan", images=plan["unique_images"], matching_ids=len(plan["matches"]),
                      same_title_groups=len(plan["same_title_candidates"]), unmatched=len(plan["unmatched"]),
                      selected=len(plan["selected_ids"]), cloud_modified=False, plan=str(path))
-        print(ui.text("核對清單: {path}\n尚未修改對話; 請透過已登入的 Codex app 執行封存請求, 再核對封存清單", "Review plan: {path}\nNo conversations changed. Execute reviewed archive requests through Codex app, then verify its archive list.", path=path))
+        print(ui.text("核對清單: {path}\n尚未修改對話, 請透過已登入的 Codex app 執行封存請求, 再核對封存清單", "Review plan: {path}\nNo conversations changed. Execute reviewed archive requests through Codex app, then verify its archive list.", path=path))
         return 0
     except Exception:
         audit.record("screenshot_plan_failed", traceback=traceback.format_exc())

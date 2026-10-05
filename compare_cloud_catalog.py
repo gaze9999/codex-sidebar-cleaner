@@ -1,7 +1,6 @@
 """Compare a cloud snapshot with the local chat cache. Read-only; missing chats are not deletion evidence."""
 from __future__ import annotations
 
-import argparse
 from contextlib import closing
 from datetime import datetime
 import hashlib
@@ -13,6 +12,7 @@ import traceback
 from uuid import UUID
 
 from clean_codex_catalog import Audit, connect, integrity
+import cleaner_language as ui
 
 
 def compare(connection: sqlite3.Connection, snapshot: dict[str, object]) -> dict[str, object]:
@@ -123,11 +123,12 @@ def compare(connection: sqlite3.Connection, snapshot: dict[str, object]) -> dict
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = ui.parser("比對雲端快照與本機對話快取, 清單缺席不作為刪除證據", __doc__)
     parser.add_argument("--cloud-snapshot", type=Path, required=True)
     parser.add_argument("--database", type=Path, default=Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))) / "sqlite/codex-dev.db")
     parser.add_argument("--output-dir", type=Path, default=Path(__file__).resolve().parent)
     args = parser.parse_args()
+    ui.configure(args)
     audit = Audit(args.output_dir / "logs" / ("cloud-compare-" + datetime.now().strftime("%Y%m%d-%H%M%S-%f")))
     try:
         raw = args.cloud_snapshot.read_bytes()

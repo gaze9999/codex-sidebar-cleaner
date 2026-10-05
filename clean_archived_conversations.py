@@ -78,7 +78,7 @@ def cloud_workflow(args, audit: Audit) -> int:
     if choice == "1":
         print(ui.text("請使用相同帳號, 在 資料控制 > 已封存的對話 > 管理 核對標題與日期, 再逐筆按刪除並確認",
                       "Use the same account. Go to Data controls > Archived chats > Manage. Check each title and date, then delete each chat"))
-        print(ui.text("此選項只開啟管理入口; 網頁刪除完成後, 可再次選第 2 項處理 Codex 殘留索引",
+        print(ui.text("此選項只開啟管理入口, 網頁刪除完成後, 可再次選第 2 項處理 Codex 殘留索引",
                       "After deleting chats in ChatGPT, use option 2 to clean any remaining Codex cache entries"))
         opened = webbrowser.open(CLOUD_SETTINGS_URL)
         audit.record("cloud_archive_manager_handoff", url=CLOUD_SETTINGS_URL, browser_opened=opened,
@@ -88,7 +88,7 @@ def cloud_workflow(args, audit: Audit) -> int:
         return 2
     if choice != "2":
         raise ValueError("Invalid cloud archive operation")
-    print(ui.text("僅輸入已在相同帳號永久刪除的對話 ID; 無法載入或清單缺席不能當成刪除證據",
+    print(ui.text("僅輸入已在相同帳號永久刪除的對話 ID, 無法載入或清單缺席不能當成刪除證據",
                   "Only use IDs permanently deleted in the same ChatGPT account. A loading error or missing entry does not prove deletion"))
     raw = input(ui.text("精確 ID, 以逗號或空白分隔 (空白取消): ", "Exact IDs, separated by commas or spaces (empty to cancel): ")).strip()
     if not raw:
@@ -100,7 +100,7 @@ def cloud_workflow(args, audit: Audit) -> int:
     # A read-only selection is not yet a statement that deletion happened in ChatGPT.
     audit.record("cloud_archive_cache_preview", host_id=plan["host_id"], entries=plan["entries"],
                  cloud_deletion_confirmed=False, live_cloud_verified=False)
-    answer = input(ui.text("確認以上對話已在 ChatGPT 永久刪除, 並同意備份後移除這些本機索引; 輸入 CLOUD DELETED: ",
+    answer = input(ui.text("確認以上對話已在 ChatGPT 永久刪除, 並同意備份後移除這些本機索引, 輸入 CLOUD DELETED: ",
                            "Confirm these chats were permanently deleted in ChatGPT. Back up and remove their local cache. Type CLOUD DELETED: ")).strip()
     if answer != "CLOUD DELETED":
         audit.record("archive_deletion_cancelled")
@@ -142,7 +142,7 @@ def main() -> int:
         return cloud_workflow(args, audit)
     except Exception:
         audit.record("archive_recovery_failed", traceback=traceback.format_exc())
-        print(ui.text("清理已停止; 日誌: {path}", "Recovery stopped. Log: {path}", path=audit.path))
+        print(ui.text("清理已停止, 記錄檔: {path}", "Recovery stopped. Log: {path}", path=audit.path))
         return 1
 
 

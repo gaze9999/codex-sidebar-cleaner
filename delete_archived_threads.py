@@ -223,7 +223,7 @@ def delete_archived(server: AppServer | None, home: Path, ids: list[str], includ
 
 def main() -> int:
     import cleaner_language as ui
-    parser = ui.parser("預覽並刪除明確選定的本機封存對話; 執行前會備份與檢查相依項目", __doc__)
+    parser = ui.parser("預覽並刪除明確選定的本機封存對話, 執行前會備份與檢查相依項目", __doc__)
     selection = parser.add_mutually_exclusive_group(required=True)
     selection.add_argument("--ids-file", type=Path, help="JSON array of exact local thread IDs")
     selection.add_argument("--interactive", action="store_true", help="Preview selected project archives, then confirm")
@@ -256,13 +256,13 @@ def main() -> int:
             plan = plan_deletion(rows, spawned, references(rows, home), ids, True, args.allow_missing_rollouts)
             for key in plan["delete_order"]:
                 print(f"{key}  {(rows[key].get('name') or rows[key].get('title') or '(hidden)')[:100]}")
-            print(ui.text("已選 {count} 個; 包含封存的分支與子對話共 {total} 個", "Selected: {count}; total including archived forks/children: {total}", count=len(ids), total=len(plan['affected_ids'])))
+            print(ui.text("已選 {count} 個, 包含封存的分支與子對話共 {total} 個", "Selected: {count}; total including archived forks/children: {total}", count=len(ids), total=len(plan['affected_ids'])))
             if plan["missing_rollout_ids"]:
-                print(ui.text("其中 {count} 個內容檔案已遺失; 將備份殘留資料後刪除, 遺失的內容無法備份",
+                print(ui.text("其中 {count} 個內容檔案已遺失, 將備份殘留資料後刪除, 遺失的內容無法備份",
                               "{count} rollout files are already missing. Remaining metadata will be backed up; missing content cannot be backed up",
                               count=len(plan["missing_rollout_ids"])))
             audit.record("interactive_archive_preview", **plan)
-            if input(ui.text("備份後永久刪除, 無法在 App 還原; 輸入 DELETE 確認: ", "Delete permanently after backup. Cannot be undone in the app. Type DELETE to confirm: ")).strip() != "DELETE":
+            if input(ui.text("備份後永久刪除, 無法在 App 還原, 輸入 DELETE 確認: ", "Delete permanently after backup. Cannot be undone in the app. Type DELETE to confirm: ")).strip() != "DELETE":
                 audit.record("archive_deletion_cancelled")
                 return 0
             args.apply = True
@@ -275,7 +275,7 @@ def main() -> int:
             delete_archived(None, home, ids, args.include_archived_dependencies, False, audit,
                             args.output_dir / "backups" / ("archive-delete-" + stamp),
                             allow_missing_rollouts=args.allow_missing_rollouts)
-            print(ui.text("預覽完成; 日誌: {path}", "Preview complete. Log: {path}", path=audit.path))
+            print(ui.text("預覽完成, 記錄檔: {path}", "Preview complete. Log: {path}", path=audit.path))
             return 0
         executable = args.codex or shutil.which("codex")
         if executable is None:
@@ -284,7 +284,7 @@ def main() -> int:
             delete_archived(server, home, ids, args.include_archived_dependencies, args.apply, audit,
                             args.output_dir / "backups" / ("archive-delete-" + stamp), reviewed_plan,
                             args.allow_missing_rollouts)
-        print(ui.text("已完成; 日誌: {path}", "Done. Log: {path}", path=audit.path))
+        print(ui.text("已完成, 記錄檔: {path}", "Done. Log: {path}", path=audit.path))
         return 0
     except Exception:
         audit.record("archive_deletion_failed", traceback=traceback.format_exc(),

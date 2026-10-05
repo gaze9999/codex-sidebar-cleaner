@@ -1,11 +1,12 @@
-"""English console messages; audit event names and saved data stay stable."""
+"""Console language selection with an encoding-aware English fallback."""
 from __future__ import annotations
 
 import argparse
 import os
+import sys
 
 
-LANGUAGES = ("en",)
+LANGUAGES = ("zh-TW", "en")
 EVENTS = {
     "started": ("開始檢查", "Inspection started"),
     "log_evidence": ("已讀取刪除證據", "Deletion evidence loaded"),
@@ -38,7 +39,7 @@ EVENTS = {
     "screenshot_cleanup_plan": ("截圖清理計畫已儲存", "Screenshot cleanup plan saved"),
     "stage_started": ("開始執行流程步驟", "Workflow stage started"),
     "stage_finished": ("流程步驟已結束", "Workflow stage finished"),
-    "workflow_stopped": ("流程已停止, 請查看日誌", "Workflow stopped; inspect the log"),
+    "workflow_stopped": ("流程已停止, 請查看記錄檔", "Workflow stopped; inspect the log"),
     "workflow_completed": ("指定流程已完成", "Requested workflow completed"),
     "organization_plan": ("已建立本機對話整理計畫", "Local organization planned"),
     "organization_no_changes": ("沒有需要整理的本機對話", "No local organization changes needed"),
@@ -68,27 +69,54 @@ EVENTS = {
 }
 
 
+def _supports_chinese() -> bool:
+    for stream in (sys.stdout, sys.stderr):
+        encoding = getattr(stream, "encoding", None)
+        if encoding:
+            try:
+                "繁體中文清理封存對話請選擇".encode(encoding)
+            except (LookupError, UnicodeError):
+                return False
+    return True
+
+
 def language() -> str:
-    return "en"
+    value = os.environ.get("SIDEBAR_CLEANER_LANG", "zh-TW")
+    if value not in LANGUAGES:
+        value = "zh-TW"
+    return "en" if value == "zh-TW" and not _supports_chinese() else value
 
 
 def text(chinese: str, english: str, **fields: object) -> str:
-    return english.format(**fields)
+    return (chinese if language() == "zh-TW" else english).format(**fields)
 
 
 def event_message(event: str) -> str:
     if event.endswith("failed"):
-        return text("執行失敗, 請查看日誌中的詳細原因", "Operation failed; inspect the log for details")
+        return text("執行失敗, 請查看記錄檔中的詳細原因", "Operation failed; inspect the log for details")
     return text(*EVENTS.get(event, ("已記錄執行進度", "Progress recorded")))
 
 
 def parser(chinese: str, english: str) -> argparse.ArgumentParser:
-    result = argparse.ArgumentParser(description=english)
+    # Select before parsing so --help also uses the requested language.
+    for index, value in enumerate(sys.argv[1:], start=1):
+        if value == "--lang" and index + 1 < len(sys.argv) and sys.argv[index + 1] in LANGUAGES:
+            os.environ["SIDEBAR_CLEANER_LANG"] = sys.argv[index + 1]
+        elif value.startswith("--lang=") and value[7:] in LANGUAGES:
+            os.environ["SIDEBAR_CLEANER_LANG"] = value[7:]
+    result = argparse.ArgumentParser(description=text(chinese, english))
     result.add_argument("--lang", choices=LANGUAGES, default=language(),
-                        help="Display language (English only)")
+                        help=text("介面語言, 預設繁體中文", "Display language (default: Traditional Chinese)"))
     return result
 
 
 def configure(args: argparse.Namespace) -> None:
-    # Child stages use English even if an older caller passes another language.
-    os.environ["SIDEBAR_CLEANER_LANG"] = "en"
+    os.environ["SIDEBAR_CLEANER_LANG"] = args.lang
+    args.lang = language()
+    os.environ["SIDEBAR_CLEANER_LANG"] = args.lang
+    if not _supports_chinese():
+        # English messages may still include user-supplied Chinese paths/titles.
+        for stream in (sys.stdout, sys.stderr):
+            reconfigure = getattr(stream, "reconfigure", None)
+            if reconfigure:
+                reconfigure(errors="backslashreplace")

@@ -1,6 +1,6 @@
 """清除明確選定的側邊欄舊專案參照, 不修改雲端專案或對話
 
-預設只預覽快取中缺少的專案參照; --interactive 選定後等待桌面退出再備份清理
+預設只預覽快取中缺少的專案參照, --interactive 選定後等待桌面退出再備份清理
 缺少快取不是雲端刪除證據, 必須由使用者確認要移除的側邊欄參照
 """
 from __future__ import annotations
@@ -151,9 +151,9 @@ def main() -> int:
                 sections = ", ".join(str(row["section_name"]) for row in rows if row["project_id"] == key)
                 print(f"{index}. {sections}: {key}", flush=True)
             if not args.interactive or not ids:
-                print(ui.text("僅預覽; 缺少快取不是刪除證據; 使用 --interactive 選擇側邊欄參照", "Preview only. Missing cache is not deletion evidence. Use --interactive to select sidebar references."), flush=True)
+                print(ui.text("僅預覽, 缺少快取不是刪除證據, 使用 --interactive 選擇側邊欄參照", "Preview only. Missing cache is not deletion evidence. Use --interactive to select sidebar references."), flush=True)
                 return 0
-            answer = input(ui.text("只移除側邊欄參照; 輸入項目編號 (空白分隔), ALL 或空白取消: ", "Remove sidebar references only. Enter numbers separated by spaces, ALL, or empty to cancel: ")).strip()
+            answer = input(ui.text("只移除側邊欄參照, 輸入項目編號 (空白分隔), ALL 或空白取消: ", "Remove sidebar references only. Enter numbers separated by spaces, ALL, or empty to cancel: ")).strip()
             if not answer:
                 return 0
             if answer != "ALL":
@@ -168,14 +168,14 @@ def main() -> int:
         audit.record("sidebar_reference_plan", **plan, apply=args.apply)
         if not args.apply:
             return 0
-        print(ui.text("請完全退出 Codex/ChatGPT 並保留此外部視窗; 等待備份並清除已選參照", "Close Codex/ChatGPT. Keep this external console open; waiting to back up and remove the selected references."), flush=True)
+        print(ui.text("請完全退出 Codex/ChatGPT 並保留此外部視窗, 等待備份並清除已選參照", "Close Codex/ChatGPT. Keep this external console open; waiting to back up and remove the selected references."), flush=True)
         deadline = time.monotonic() + args.wait_seconds
         while app_running():
             if time.monotonic() >= deadline:
                 raise TimeoutError("Desktop still running; sidebar references were not changed.")
             time.sleep(2)
         apply_plan(path, plan, args.output_dir / "backups" / ("sidebar-state-" + stamp + ".json"), audit)
-        print(ui.text("已移除選定的側邊欄參照; 重開 Codex 更新畫面; 雲端對話未變更", "Selected sidebar references removed. Reopen Codex to refresh; cloud conversations were not changed."), flush=True)
+        print(ui.text("已移除選定的側邊欄參照, 重開 Codex 更新畫面, 雲端對話未變更", "Selected sidebar references removed. Reopen Codex to refresh; cloud conversations were not changed."), flush=True)
         return 0
     except Exception:
         audit.record("sidebar_reference_cleanup_failed", traceback=traceback.format_exc())

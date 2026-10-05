@@ -1,11 +1,12 @@
-"""依全部桌面日誌清理已確認 conversation_deleted 的 ChatGPT 側欄索引。
+"""依全部桌面記錄檔清理已確認 conversation_deleted 的 ChatGPT 側欄索引
 
-python clean_codex_catalog.py          唯讀檢查並留下 log
-python clean_codex_catalog.py --apply  等待桌面退出，備份後以交易清理
-python clean_codex_catalog.py --apply --reconcile  重設雲端清單同步，交由 App 核對最近約 30 天
+python clean_codex_catalog.py          唯讀檢查並留下記錄檔
+python clean_codex_catalog.py --apply  等待桌面退出, 備份後以交易清理
+python clean_codex_catalog.py --apply --reconcile  重設雲端清單同步, 交由 App 核對最近約 30 天
 
-Python 3.10+ / Windows 或 macOS。紀錄寫入 logs/catalog-run-*，備份寫入 backups/。
-資料庫備份可能包含私人側欄資訊，請留在本機。
+Python 3.10+ / Windows 或 macOS
+記錄檔寫入 logs/catalog-run-*, 備份寫入 backups/
+資料庫備份可能包含私人側欄資訊, 請留在本機
 """
 
 from __future__ import annotations
@@ -180,9 +181,9 @@ def diagnose_load_failures(connection: sqlite3.Connection, roots: list[Path], au
                  sources_found=len(sources), report=str(path), automatic_removals=0,
                  live_cloud_verified=False, ui_verified=False)
     if entries:
-        print(ui.text("最新 App 日誌有 {count} 個對話載入錯誤; {outside} 個不在本機索引; 這些錯誤不是刪除證據; 報告: {path}", "Latest app session: {count} logged conversation load failures; {outside} have no local catalog row. These errors are not deletion evidence. Report: {path}", count=len(entries), outside=outside, path=path), flush=True)
+        print(ui.text("最新 App 記錄檔有 {count} 個對話載入錯誤, {outside} 個不在本機索引, 這些錯誤不是刪除證據, 報告: {path}", "Latest app session: {count} logged conversation load failures; {outside} have no local catalog row. These errors are not deletion evidence. Report: {path}", count=len(entries), outside=outside, path=path), flush=True)
     elif not sources:
-        print(ui.text("找不到桌面日誌; 無法診斷對話載入錯誤", "No desktop logs found. Conversation load errors could not be diagnosed."), flush=True)
+        print(ui.text("找不到桌面記錄檔, 無法診斷對話載入錯誤", "No desktop logs found. Conversation load errors could not be diagnosed."), flush=True)
     return report
 
 
@@ -222,7 +223,7 @@ def verify(connection: sqlite3.Connection, ids: list[str], audit: Audit) -> None
                                "checkpoint_pending": bool(pending)} for complete, last, pending in sync],
                  all_cloud_conversations_verified=False,
                  limitation="No per-conversation live lookup. Unseen failures and old/project-specific ghosts may remain.")
-    print(ui.text("剩餘已確認刪除索引: {count}; 專案與同步數量請查看日誌", "Known deleted entries remaining: {count}. See log for project and sync counts.", count=len(remaining)), flush=True)
+    print(ui.text("剩餘已確認刪除索引: {count}, 專案與同步數量請查看記錄檔", "Known deleted entries remaining: {count}. See log for project and sync counts.", count=len(remaining)), flush=True)
 
 
 def scan_projects(connection: sqlite3.Connection, state_path: Path, audit: Audit) -> None:
@@ -661,16 +662,16 @@ def main() -> int:
                       if entry["source_kind"] == "chatgpt" and not entry["confirmed_deleted_catalog_target"]]
         audit.record("inspection", rows=[{"thread_id": r[1], "title": r[2]} for r in rows])
         if not args.apply:
-            print(ui.text("唯讀檢查: {count} 個符合項目; 日誌: {path}", "Read-only check: {count} matching entries. Log: {path}", count=len(rows), path=audit.path))
+            print(ui.text("唯讀檢查: {count} 個符合項目, 記錄檔: {path}", "Read-only check: {count} matching entries. Log: {path}", count=len(rows), path=audit.path))
             return 0
         if not cleanup_requires_desktop_exit(apply=args.apply, reconcile=args.reconcile, rows=rows):
             audit.record("no_op", reason="No confirmed-deleted catalog entries matched; other sidebar or loading errors may remain.",
                          catalog_rows_deleted=0, ui_verified=False)
-            print(ui.text("沒有符合已確認刪除的索引, 未修改資料; 其他側邊欄或載入錯誤可能仍存在; 日誌: {path}", "No confirmed-deleted catalog entries matched. No catalog changes were made. Other sidebar or loading errors may remain. Log: {path}", path=audit.path), flush=True)
+            print(ui.text("沒有符合已確認刪除的索引, 未修改資料, 其他側邊欄或載入錯誤可能仍存在, 記錄檔: {path}", "No confirmed-deleted catalog entries matched. No catalog changes were made. Other sidebar or loading errors may remain. Log: {path}", path=audit.path), flush=True)
             if unresolved:
                 audit.record("cloud_sidebar_review_required", thread_ids=[entry["thread_id"] for entry in unresolved],
                              reason="These cloud list items cannot be removed by deleting local catalog rows.")
-                print(ui.text("仍需核對雲端側邊欄; 請透過已登入的 Codex app 封存確認過的 ID; 只重新同步無法清除這些項目", "Cloud sidebar review is still required. Use the signed-in Codex app to archive reviewed IDs; reconciliation alone cannot clear these entries."), flush=True)
+                print(ui.text("仍需核對雲端側邊欄, 請透過已登入的 Codex app 封存確認過的 ID, 只重新同步無法清除這些項目", "Cloud sidebar review is still required. Use the signed-in Codex app to archive reviewed IDs; reconciliation alone cannot clear these entries."), flush=True)
                 return 2
             return 0
         audit.record("waiting_for_desktop_exit", timeout_seconds=args.wait_seconds)
@@ -696,9 +697,9 @@ def main() -> int:
         if not args.reconcile and unresolved:
             audit.record("cloud_sidebar_review_required", thread_ids=[entry["thread_id"] for entry in unresolved],
                          reason="Catalog cleanup completed, but other cloud sidebar errors remain unverified.")
-            print(ui.text("索引清理已完成; 雲端側邊欄仍待核對; 日誌: {path}", "Catalog cleanup finished; cloud sidebar review remains pending. Log: {path}", path=audit.path), flush=True)
+            print(ui.text("索引清理已完成, 雲端側邊欄仍待核對, 記錄檔: {path}", "Catalog cleanup finished; cloud sidebar review remains pending. Log: {path}", path=audit.path), flush=True)
             return 2
-        print(ui.text("已完成; 請重開 Codex 核對; 日誌: {path}", "Done. Reopen Codex and verify. Log: {path}", path=audit.path), flush=True)
+        print(ui.text("已完成, 請重開 Codex 核對, 記錄檔: {path}", "Done. Reopen Codex and verify. Log: {path}", path=audit.path), flush=True)
         return 0
     except Exception:
         audit.record("failed", traceback=traceback.format_exc())
