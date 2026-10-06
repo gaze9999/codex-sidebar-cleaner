@@ -19,6 +19,7 @@ import traceback
 from clean_codex_catalog import Audit, connect, validate_schema
 from clean_sidebar_references import candidates, KEY
 import cleaner_language as ui
+from runtime_paths import APP, ROOT, tool_command
 from plan_sidebar_cleanup import load_reviewed_plan, archive_status
 
 
@@ -101,9 +102,9 @@ def wait_for_reconciliation(home: Path, timeout: int, audit: Audit) -> None:
 
 
 def run_workflow(args: argparse.Namespace, audit: Audit) -> int:
-    scripts = Path(__file__).resolve().parent
+    scripts = APP
     common = ["--codex-home", str(args.codex_home), "--output-dir", str(args.output_dir)]
-    cleaner = [sys.executable, "-X", "utf8", "-u", str(scripts / "clean_codex_catalog.py"), *common]
+    cleaner = tool_command(scripts / "clean_codex_catalog.py", *common)
     for root in args.log_root or []:
         cleaner.extend(["--log-root", str(root)])
 
@@ -145,8 +146,8 @@ def run_workflow(args: argparse.Namespace, audit: Audit) -> int:
     if args.apply:
         references = getattr(args, "sidebar_reference_plan", None)
         if references is not None or getattr(args, "review_sidebar_references", False):
-            reference_command = [sys.executable, "-X", "utf8", "-u", str(scripts / "clean_sidebar_references.py"),
-                                 *common, "--wait-seconds", str(args.wait_seconds)]
+            reference_command = tool_command(scripts / "clean_sidebar_references.py",
+                                             *common, "--wait-seconds", str(args.wait_seconds))
             reference_command += ["--plan", str(references), "--apply"] if references else ["--interactive"]
             code = stage("clean_reviewed_sidebar_references", reference_command)
             if code:
@@ -186,7 +187,7 @@ def main() -> int:
     parser.add_argument("--archived-snapshot", type=Path, help="Native Codex app archive listing snapshot for the reviewed IDs")
     parser.add_argument("--codex-home", type=Path,
                         default=Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))))
-    parser.add_argument("--output-dir", type=Path, default=Path(__file__).resolve().parent)
+    parser.add_argument("--output-dir", type=Path, default=ROOT)
     parser.add_argument("--log-root", type=Path, action="append")
     parser.add_argument("--wait-seconds", type=int, default=1800)
     parser.add_argument("--reconcile-wait-seconds", type=int, default=1800)

@@ -8,9 +8,10 @@ import subprocess
 import sys
 
 import cleaner_language as ui
+from runtime_paths import APP, ROOT as OUTPUT_ROOT, tool_command
 
 
-ROOT = Path(__file__).resolve().parent
+ROOT = APP
 ROUTES = {
     ("main", "1"): ("maintain_sidebar.py", "--apply", "--review-sidebar-references"),
     ("main", "2"): ("clean_archived_conversations.py", "--interactive"),
@@ -20,6 +21,11 @@ ROUTES = {
     ("advanced", "4"): ("organize_local_threads.py", "--apply"),
     ("advanced", "5"): ("clean_codex_catalog.py", "--apply"),
 }
+
+
+def route_command(menu: str, choice: str, language: str) -> list[str]:
+    script, *flags = ROUTES[(menu, choice)]
+    return tool_command(ROOT / script, "--lang", language, *flags)
 
 
 def main() -> int:
@@ -74,9 +80,7 @@ def main() -> int:
         if route is None:
             print(ui.text("選項無效, 請重新選擇", "Invalid choice. Try again."))
             continue
-        script, *flags = route
-        result = subprocess.run([sys.executable, "-X", "utf8", "-u", str(ROOT / script),
-                                 "--lang", ui.language(), *flags], check=False)
+        result = subprocess.run(route_command(menu, choice, ui.language()), check=False)
         status = result.returncode
         if status == 0:
             print(ui.text("操作已結束", "Finished"))
@@ -85,7 +89,7 @@ def main() -> int:
         else:
             print(ui.text("流程已停止, 結束代碼: {status}", "Stopped. Exit code: {status}", status=status))
         if status != 0:
-            print(ui.text("記錄檔: {path}", "Logs: {path}", path=ROOT / "logs"))
+            print(ui.text("記錄檔: {path}", "Logs: {path}", path=OUTPUT_ROOT / "logs"))
         try:
             input(ui.text("按 Enter 關閉: ", "Press Enter to close: "))
         except EOFError:

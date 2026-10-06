@@ -5,14 +5,14 @@ import sys
 import unittest
 from unittest.mock import Mock, patch
 
-import start as launcher
+import cli as launcher
 from test_cleaner_language import EncodedOutput
 
 
 class LauncherTests(unittest.TestCase):
     def launch(self, inputs, status=0, arguments=(), encoding="utf-8"):
         output = EncodedOutput(encoding)
-        with patch.dict(os.environ), patch.object(sys, "argv", ["start.py", *arguments]), \
+        with patch.dict(os.environ), patch.object(sys, "argv", ["launch-cli.py", *arguments]), \
              patch.object(sys, "stdout", output), patch.object(sys, "stderr", io.StringIO()), \
              patch.object(launcher, "ROOT", Path("fixture folder")), \
              patch("builtins.input", side_effect=inputs), \

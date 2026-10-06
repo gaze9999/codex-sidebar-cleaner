@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { archiveSidebarBatch } from './archive_sidebar_ui.mjs';
+import { archiveSidebarBatch } from '../app/scripts/archive_sidebar_ui.mjs';
 
 const keep = '00000000-0000-0000-0000-000000000001';
 const old = '00000000-0000-0000-0000-000000000002';

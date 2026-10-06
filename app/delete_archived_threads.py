@@ -10,6 +10,7 @@ from datetime import datetime
 import json
 import os
 from pathlib import Path
+from runtime_paths import ROOT
 import shutil
 import sqlite3
 import traceback
@@ -233,7 +234,7 @@ def main() -> int:
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--codex-home", type=Path, default=Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))))
     parser.add_argument("--codex", help="Installed Codex executable")
-    parser.add_argument("--output-dir", type=Path, default=Path(__file__).resolve().parent)
+    parser.add_argument("--output-dir", type=Path, default=ROOT)
     args = parser.parse_args()
     ui.configure(args)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")

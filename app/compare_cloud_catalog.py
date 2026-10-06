@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+from runtime_paths import ROOT
 import sqlite3
 import traceback
 from uuid import UUID
@@ -126,7 +127,7 @@ def main() -> int:
     parser = ui.parser("比對雲端快照與本機對話快取, 清單缺席不作為刪除證據", __doc__)
     parser.add_argument("--cloud-snapshot", type=Path, required=True)
     parser.add_argument("--database", type=Path, default=Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))) / "sqlite/codex-dev.db")
-    parser.add_argument("--output-dir", type=Path, default=Path(__file__).resolve().parent)
+    parser.add_argument("--output-dir", type=Path, default=ROOT)
     args = parser.parse_args()
     ui.configure(args)
     audit = Audit(args.output_dir / "logs" / ("cloud-compare-" + datetime.now().strftime("%Y%m%d-%H%M%S-%f")))

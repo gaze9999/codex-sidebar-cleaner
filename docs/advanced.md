@@ -1,14 +1,14 @@
 # 進階用法
 
-一般操作請使用 [啟動選單](../README.md), 帶 `--apply` 的命令會寫入, 其餘範例用於預覽或建立核對資料, 修改前仍會核對範圍與備份
+一般操作請使用 [CLI 啟動入口](README.md), 以下命令從儲存庫根目錄執行, 帶 `--apply` 的命令會寫入, 其餘範例用於預覽或建立核對資料, 修改前仍會核對範圍與備份
 
 ## 本機封存與分類
 
 `selected-archives.json` 是精確本機 thread ID 的 JSON 陣列, 不接受雲端 ID. `--include-archived-dependencies` 允許納入所選歷史的封存 fork, 活動中的 fork 或子對話會阻擋刪除
 
 ```powershell
-python delete_archived_threads.py --ids-file selected-archives.json --include-archived-dependencies
-python organize_local_threads.py --section-name "我的本機任務"
+python app/delete_archived_threads.py --ids-file selected-archives.json --include-archived-dependencies
+python app/organize_local_threads.py --section-name "我的本機任務"
 ```
 
 內容檔案已遺失時加 `--allow-missing-rollouts`, 備份保存剩餘資料與 `missing_rollout_ids`, 不會還原遺失內容. 實際刪除使用 Codex CLI 的 `thread/delete`, 不直接刪改資料庫, 部分失敗時先查看已成功的 ID, 僅以剩餘 ID 建立新計畫
@@ -17,10 +17,10 @@ python organize_local_threads.py --section-name "我的本機任務"
 
 | 操作 | 命令 / 格式 |
 | --- | --- |
-| 舊專案參照 | `python clean_sidebar_references.py --plan plan.json`, 可由 `--interactive` 核對並產生計畫 |
-| 已核對的參照與重新同步 | `python maintain_sidebar.py --sidebar-reference-plan plan.json --apply`, 使用已核對的計畫並執行同步 |
-| 建立封存請求 | `python plan_sidebar_cleanup.py --titles-file titles.json`, 標題檔為 JSON 字串陣列 |
-| 對齊其他裝置最近清單 | `python clean_codex_catalog.py --align-recents plan.json`, 只處理本機非專案快取 |
+| 舊專案參照 | `python app/clean_sidebar_references.py --plan plan.json`, 可由 `--interactive` 核對並產生計畫 |
+| 已核對的參照與重新同步 | `python app/maintain_sidebar.py --sidebar-reference-plan plan.json --apply`, 使用已核對的計畫並執行同步 |
+| 建立封存請求 | `python app/plan_sidebar_cleanup.py --titles-file titles.json`, 標題檔為 JSON 字串陣列 |
+| 對齊其他裝置最近清單 | `python app/clean_codex_catalog.py --align-recents plan.json`, 只處理本機非專案快取 |
 
 最近清單計畫需 `schema_version: 1`, `scope: "visible_nonproject_chatgpt"`, `confirmed_complete_reference: true`, 正確 `host_id`, 非空且不重疊的 `keep_ids` / `remove_ids`, 新對話或專案歸屬改變時必須重新核對, 不作為永久白名單
 
@@ -43,7 +43,7 @@ python organize_local_threads.py --section-name "我的本機任務"
 ```
 
 ```powershell
-python clean_codex_catalog.py --confirmed-deleted-plan plan.json
+python app/clean_codex_catalog.py --confirmed-deleted-plan plan.json
 ```
 
 寫入時再次比對帳戶, ID, 標題與專案歸屬, 只移除本機索引, 不執行雲端刪除. 計畫與個人快照保存在本機, 不公開提交
@@ -51,7 +51,7 @@ python clean_codex_catalog.py --confirmed-deleted-plan plan.json
 ## 雲端快照比對
 
 ```powershell
-python compare_cloud_catalog.py --cloud-snapshot cloud-snapshot.json
+python app/compare_cloud_catalog.py --cloud-snapshot cloud-snapshot.json
 ```
 
 快照需 `schema_version: 1`, `source`, ISO 日期 `captured_at`, `account_label`, `coverage` 與 `conversations`. `coverage` 以布林值標示 `recents`, `projects`, `archived`, `cloud_work` 是否完整, 每筆對話需 UUID `id`, `title` 與明確的 `project_id` (無專案為 null)

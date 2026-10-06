@@ -17,6 +17,7 @@ import traceback
 import webbrowser
 
 import cleaner_language as ui
+from runtime_paths import APP, ROOT, tool_command
 from clean_codex_catalog import Audit, connect, validate_confirmed_deleted_plan
 
 
@@ -59,9 +60,9 @@ def cloud_cache_selection(home: Path, ids: list[str]) -> dict:
 
 
 def run_child(script: str, args, flags: list[str], audit: Audit) -> int:
-    command = [sys.executable, "-X", "utf8", "-u", str(Path(__file__).resolve().parent / script),
+    command = tool_command(APP / script,
                "--lang", args.lang, "--codex-home", str(args.codex_home),
-               "--output-dir", str(args.output_dir), *flags]
+               "--output-dir", str(args.output_dir), *flags)
     if script == "delete_archived_threads.py" and args.codex:
         command.extend(["--codex", args.codex])
     result = subprocess.run(command, check=False)
@@ -123,7 +124,7 @@ def main() -> int:
     parser.add_argument("--source", choices=("local", "cloud"))
     parser.add_argument("--codex-home", type=Path, default=Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))))
     parser.add_argument("--codex", help="Installed Codex executable for local deletion")
-    parser.add_argument("--output-dir", type=Path, default=Path(__file__).resolve().parent)
+    parser.add_argument("--output-dir", type=Path, default=ROOT)
     parser.add_argument("--wait-seconds", type=int, default=1800)
     args = parser.parse_args()
     ui.configure(args)

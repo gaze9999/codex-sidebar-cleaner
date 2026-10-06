@@ -13,6 +13,7 @@ from pathlib import Path
 import queue
 import shutil
 import subprocess
+from runtime_paths import APP, ROOT, tool_command
 import sys
 import threading
 import time
@@ -193,7 +194,7 @@ def main() -> int:
     parser.add_argument("--section-name", default="Local Codex")
     parser.add_argument("--codex-home", type=Path, default=Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))))
     parser.add_argument("--codex", help="Path to the installed Codex executable")
-    parser.add_argument("--output-dir", type=Path, default=Path(__file__).resolve().parent)
+    parser.add_argument("--output-dir", type=Path, default=ROOT)
     args = parser.parse_args()
     ui.configure(args)
     audit = Audit(args.output_dir / "logs" / ("local-organize-" + datetime.now().strftime("%Y%m%d-%H%M%S-%f")))
@@ -203,8 +204,8 @@ def main() -> int:
         home = args.codex_home.resolve(strict=True)
         audit.record("initial_verification_started")
         result = subprocess.run(
-            [sys.executable, "-X", "utf8", "-u", str(Path(__file__).with_name("clean_codex_catalog.py")),
-             "--verify", "--codex-home", str(home), "--output-dir", str(args.output_dir.resolve())],
+            tool_command(APP / "clean_codex_catalog.py",
+                         "--verify", "--codex-home", str(home), "--output-dir", str(args.output_dir.resolve())),
             check=False,
         )
         audit.record("initial_verification_finished", exit_code=result.returncode)

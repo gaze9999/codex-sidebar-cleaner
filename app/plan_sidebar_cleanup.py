@@ -13,6 +13,7 @@ import difflib
 import json
 import os
 from pathlib import Path
+from runtime_paths import APP, ROOT
 import re
 import subprocess
 import sys
@@ -201,7 +202,7 @@ def main() -> int:
     parser.add_argument("--reviewed-ids", type=Path)
     parser.add_argument("--confirmed-unwanted", action="store_true")
     parser.add_argument("--codex-home", type=Path, default=Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))))
-    parser.add_argument("--output-dir", type=Path, default=Path(__file__).resolve().parent)
+    parser.add_argument("--output-dir", type=Path, default=ROOT)
     args = parser.parse_args()
     ui.configure(args)
     audit = Audit(args.output_dir / "logs" / ("screenshot-plan-" + datetime.now().strftime("%Y%m%d-%H%M%S-%f")))
@@ -225,7 +226,7 @@ def main() -> int:
                 raise ValueError("Windows OCR is available only on Windows; use --titles-file or --ocr-json on other platforms.")
             args.ocr_json = audit.directory / "ocr.json"
             command = [str(Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe"),
-                       "-NoProfile", "-File", str(Path(__file__).parent / "scripts/read_sidebar_images.ps1"),
+                       "-NoProfile", "-File", str(APP / "scripts/read_sidebar_images.ps1"),
                        "-OutputPath", str(args.ocr_json.resolve()), *[str(path.resolve(strict=True)) for path in args.images]]
             subprocess.run(command, check=True)
         images = ([{"name": args.titles_file.name, "lines": json.loads(args.titles_file.read_text(encoding="utf-8-sig"))}]

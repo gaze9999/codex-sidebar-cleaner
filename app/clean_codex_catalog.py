@@ -20,6 +20,7 @@ import json
 import os
 import re
 from pathlib import Path
+from runtime_paths import ROOT
 import sqlite3
 import subprocess
 import sys
@@ -618,7 +619,7 @@ def main() -> int:
     parser.add_argument("--codex-home", type=Path, default=Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))))
     parser.add_argument("--database", type=Path, help="Override the detected catalog database path")
     parser.add_argument("--log-root", type=Path, action="append", help="Override app log roots; repeat for multiple roots")
-    parser.add_argument("--output-dir", type=Path, default=Path(__file__).resolve().parent)
+    parser.add_argument("--output-dir", type=Path, default=ROOT)
     parser.add_argument("--wait-seconds", type=int, default=1800)
     args = parser.parse_args()
     ui.configure(args)

@@ -11,6 +11,7 @@ from datetime import datetime
 import json
 import os
 from pathlib import Path
+from runtime_paths import ROOT
 import re
 import tempfile
 import time
@@ -124,7 +125,7 @@ def main() -> int:
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--account-id")
     parser.add_argument("--codex-home", type=Path, default=Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))))
-    parser.add_argument("--output-dir", type=Path, default=Path(__file__).resolve().parent)
+    parser.add_argument("--output-dir", type=Path, default=ROOT)
     parser.add_argument("--wait-seconds", type=int, default=1800)
     args = parser.parse_args()
     ui.configure(args)
