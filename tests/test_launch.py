@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 import cli as launcher
+import runtime_paths
 from test_cleaner_language import EncodedOutput
 
 
@@ -81,6 +82,24 @@ class LauncherTests(unittest.TestCase):
                 self.assertEqual(run.call_count, 1)
                 self.assertIn(message, output)
                 self.assertEqual("記錄檔:" in output, status != 0)
+
+    def test_source_and_packaged_output_roots_do_not_follow_the_current_directory(self):
+        self.assertEqual(runtime_paths.output_root(), Path(runtime_paths.__file__).resolve().parents[1])
+        root = Path.cwd() / "fixture"
+        for platform, name in (("win32", "CodexSidebarCleaner.exe"), ("darwin", "CodexSidebarCleaner")):
+            with self.subTest(platform=platform), patch.object(sys, "frozen", True, create=True), \
+                 patch.object(sys, "platform", platform), \
+                 patch.object(sys, "executable", str(root / "runtime/CodexSidebarCleaner" / name)):
+                self.assertEqual(runtime_paths.output_root(), root)
+
+    def test_packaged_routes_use_the_cli_binary_and_preserve_arguments(self):
+        root = Path("package")
+        for platform, name in (("win32", "CodexSidebarCleaner.exe"), ("darwin", "CodexSidebarCleaner")):
+            with self.subTest(platform=platform), patch.object(sys, "frozen", True, create=True), \
+                 patch.object(sys, "platform", platform), patch.object(runtime_paths, "ROOT", root):
+                command = runtime_paths.tool_command(Path("app/maintain_sidebar.py"), "--lang", "en", "--help")
+                self.assertEqual(command, [str(root / "runtime/CodexSidebarCleaner" / name),
+                                           "--tool", "maintain_sidebar.py", "--lang", "en", "--help"])
 
 
 if __name__ == "__main__":

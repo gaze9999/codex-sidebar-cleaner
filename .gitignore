@@ -1,6 +1,7 @@
-# 執行紀錄與可能含私人對話資訊的備份
+# Private conversation data, logs and recovery files
 logs/
 backups/
+/.bundle/
 *.log
 *.jsonl
 *.sqlite
@@ -9,7 +10,7 @@ backups/
 *.db-*
 *.bak
 
-# 個人雲端清單、核對報告與清理計畫
+# Personal cloud inventories, comparison reports and cleanup plans
 cloud-snapshot*.json
 cloud-comparison*.json
 project-scan*.json
@@ -18,7 +19,7 @@ ipad-recents-plan*.json
 before-sections*.json
 selected-archives*.json
 
-# Python 執行環境與快取
+# Python environments, caches and validation output
 __pycache__/
 *.py[cod]
 .venv/
@@ -28,9 +29,10 @@ venv/
 .ruff_cache/
 .playwright-cli/
 .coverage
+.coverage.*
 htmlcov/
 
-# 個人設定、憑證、編輯器與暫存檔
+# Local settings, credentials, editors and temporary files
 .env
 .env.*
 !.env.example
@@ -45,7 +47,7 @@ htmlcov/
 Thumbs.db
 desktop.ini
 
-# 產出壓縮檔與建置結果
+# Generated archives and build output
 *.zip
 dist/
 build/

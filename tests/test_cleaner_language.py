@@ -1,4 +1,5 @@
 import argparse
+import builtins
 import io
 import os
 import sys
@@ -38,6 +39,13 @@ class LanguageTests(unittest.TestCase):
         self.assertEqual(ui.text("共 {count} 筆", "{count} entries", count=3), "3 entries")
         os.environ["SIDEBAR_CLEANER_LANG"] = "unknown"
         self.assertEqual(ui.language(), "zh-TW")
+
+    def test_console_input_is_preserved_with_an_old_launcher_environment(self):
+        original = builtins.input
+        with patch.dict(os.environ, SIDEBAR_CLEANER_GUI="1"):
+            ui.configure(argparse.Namespace(lang="zh-TW"))
+            self.assertIs(builtins.input, original)
+            self.assertEqual(ui.language(), "zh-TW")
 
     def test_either_output_stream_can_require_english_fallback(self):
         for stream in ("stdout", "stderr"):
