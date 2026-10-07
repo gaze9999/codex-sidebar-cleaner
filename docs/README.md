@@ -4,7 +4,7 @@
 
 ## 開始使用
 
-目前使用原始碼 CLI, 需要既有 Python 3.10+ 與標準函式庫, 不自動安裝相依套件. 1.0 前不提供 GitHub Release, 舊版免安裝附件已撤下. 本機封存刪除與對話整理仍需相容的 Codex CLI
+目前使用原始碼 CLI, 需要既有 Python 3.10+ 與標準函式庫, 不自動安裝相依套件. 1.0.0 前不提供 GitHub Release, 舊版免安裝附件已撤下. 本機封存刪除與對話整理仍需相容的 Codex CLI
 
 | 平台 / 來源 | 啟動入口 |
 | --- | --- |
@@ -87,6 +87,6 @@ python -X utf8 -m unittest tests.test_launch tests.test_frozen_entry tests.test_
 
 GitHub Actions 的 Build portable CLI 可手動執行, 流程設定為產出 Windows x64 ZIP、macOS Intel 與 Apple Silicon tar.gz, 共三份 CLI 套件與各自的 SHA-256. 每個平台檢查 SQLite runtime、全部工具的說明入口與 CLI 選單
 
-1.0 前不建立 GitHub Release, 建置只保存 Actions artifacts. 手動執行也只保存 artifacts. 推送新的 1.0 或以上版本 `v*` tag 後, 全部平台通過檢查才建立 GitHub Release 並附加套件與 SHA-256, 流程不自行建立 tag, 更新既有 tag 不重建附件. 1.0 或以上的已發布 Release 也可觸發建置並附加通過檢查的產物
+1.0.0 前不建立 GitHub Release, 建置只保存 Actions artifacts. 手動執行也只保存 artifacts. 推送新的 1.0.0 或以上正式版本 tag (如 `v1.0.0`) 後, 全部平台通過檢查才建立 GitHub Release 並附加套件與 SHA-256, 流程不自行建立 tag, 更新既有 tag 不重建附件. 不完整版本號或 prerelease tag 不自動發布. 1.0.0 或以上的已發布正式 Release 也可觸發建置並附加通過檢查的產物
 
 macOS 使用原生 runner 打包, 保留符號連結與檔案權限, 本機 Windows 檢查不代表 macOS 已通過

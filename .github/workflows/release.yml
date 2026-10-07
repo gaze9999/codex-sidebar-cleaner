@@ -48,12 +48,24 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Check stable release version
+        id: release-policy
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
+        run: |
+          if [[ "$RELEASE_TAG" =~ ^v[1-9][0-9]*\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "allowed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "allowed=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/download-artifact@v8
+        if: steps.release-policy.outputs.allowed == 'true'
         with:
           pattern: portable-*
           path: dist
           merge-multiple: true
       - name: Publish tested packages
+        if: steps.release-policy.outputs.allowed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
