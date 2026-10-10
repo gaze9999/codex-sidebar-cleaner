@@ -8,7 +8,7 @@
 
 | 平台 / 來源 | 啟動入口 |
 | --- | --- |
-| Windows 原始碼 CLI | `launch-cli.cmd` 或 `launch-cli.ps1`, 使用 CMD 顯示終端機選單 |
+| Windows 原始碼 CLI | `launch-cli.cmd`, 顯示終端機選單 |
 | macOS 原始碼 CLI | `sh launch-cli.command`, 顯示終端機選單 |
 | 原始碼 CLI | 對應平台的啟動入口, 或 `python launch-cli.py` |
 
@@ -16,7 +16,7 @@
 
 預設繁體中文, 主選單與進階選單可輸入 `L` 切換 English, 編碼無法輸出中文時自動改用英文. Windows 啟動器保持純 ASCII
 
-可在 CMD / macOS 入口後加 `en` 直接以英文啟動, PowerShell 使用 `./launch-cli.ps1 -Language en`. PowerShell 執行原則阻擋 `.ps1` 時可改用 `.cmd`, 啟動器不修改系統執行原則
+可在 CMD / macOS 入口後加 `en` 直接以英文啟動, PowerShell 使用 `./launch-cli.cmd en`
 
 請從 Codex 外部啟動, 需要清理快取時, 依提示完全退出與重開 App, 並保留 cleaner 終端機. macOS 請結束 App, 不只關閉視窗
 
@@ -48,6 +48,8 @@
 
 **雲端**: 開啟 ChatGPT 封存管理, 使用相同帳號在網頁逐筆核對與確認刪除. 網頁已刪除但 Codex 仍顯示時, 選雲端流程第 2 項, 核對精確 ID 後輸入 `CLOUD DELETED` 清理本機索引. 工具不自動刪除雲端對話, 雲端刪除結果由使用者確認
 
+目前網頁入口為 [設定 > Archived chats](https://chatgpt.com/settings/archived-chats), 部分介面仍在 資料控制 > 已封存的對話 > 管理. 刪除後請重新整理並核對原對話連結, 若項目又出現或內容仍可載入, 雲端刪除尚未確認, 不要使用本機索引清理. 可從原對話的 更多 > 刪除 核對操作, 持續失敗時, 保留對話連結、發生時間與錯誤訊息, 依 [OpenAI 支援說明](https://help.openai.com/en/articles/6614161-how-can-i-contact-support) 請支援人員檢查雲端刪除與專案歸屬. 此工具無法修復伺服器上的刪除失敗, 不提供刪除全部對話或專案的替代操作
+
 ## 記錄檔與限制
 
 - `logs/` 保存計畫與逐筆結果, `backups/` 保存修改前的資料, 不要公開上傳, 可能包含私人對話資訊
@@ -75,12 +77,12 @@ python app/delete_archived_threads.py --help
 
 ## 原始碼與打包
 
-根目錄的使用者入口只保留 `launch-cli.cmd`、`launch-cli.ps1`、`launch-cli.command` 與 `launch-cli.py`. `app/` 放程式、scripts 與 CLI 圖示, `tests/` 放測試, `docs/` 放中文說明, `tools/` 放打包工具
+根目錄的使用者入口為 `launch-cli.cmd` (Windows)、`launch-cli.command` (macOS) 與共用實作 `launch-cli.py`, 原始碼與免安裝包共用 `launch-cli.py` 的啟動、工具分派與 SQLite runtime 檢查. 免安裝包將共用實作打包進執行檔, 每個平台只附對應的啟動入口. `app/` 放功能模組、scripts 與 CLI 圖示, `tests/` 依 CLI、封存、修正計畫及維護流程集中測試, `docs/` 放中文說明, `tools/` 放打包工具
 
 本機最小檢查:
 
 ```powershell
-python -X utf8 -m unittest tests.test_launch tests.test_frozen_entry tests.test_cleaner_language
+python -X utf8 -m unittest tests.test_cli
 ```
 
 本機不執行封裝測試, 原生打包交由 Release CI 執行. 打包相依套件集中在 `tools/build-requirements.txt`, 只在 CI 安裝, 啟動不下載或安裝相依套件

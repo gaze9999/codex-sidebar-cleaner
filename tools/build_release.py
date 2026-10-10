@@ -58,7 +58,7 @@ def main() -> int:
     run.mkdir(parents=True)
     binary_output = run / "binaries"
     name = "CodexSidebarCleaner"
-    modules = [p.stem for p in (ROOT / "app").glob("*.py") if p.stem != "frozen_entry"]
+    modules = [p.stem for p in (ROOT / "app").glob("*.py")]
     data = []
     for path in sorted((ROOT / "app").glob("*.py")):
         data.extend(["--add-data", f"{path}:app"])
@@ -71,7 +71,7 @@ def main() -> int:
         command.extend(["--icon", str(icon)])
     for module in modules:
         command.extend(["--hidden-import", module])
-    command.append(str(ROOT / "app/frozen_entry.py"))
+    command.append(str(ROOT / "launch-cli.py"))
     subprocess.run(command, cwd=ROOT, check=True)
     system = "windows" if sys.platform == "win32" else "macos"
     machine = platform.machine().lower()
@@ -81,11 +81,10 @@ def main() -> int:
     runtime.mkdir(parents=True)
     shutil.copytree(binary_output / name, runtime / name, symlinks=True)
     shutil.copytree(ROOT / "docs", package / "docs")
-    entrances = ("launch-cli.cmd", "launch-cli.ps1") if sys.platform == "win32" else ("launch-cli.command",)
-    for entrance in entrances:
-        shutil.copy2(ROOT / entrance, package / entrance)
-        if entrance.endswith(".command"):
-            (package / entrance).chmod(0o755)
+    entrance = "launch-cli.cmd" if sys.platform == "win32" else "launch-cli.command"
+    shutil.copy2(ROOT / entrance, package / entrance)
+    if entrance.endswith(".command"):
+        (package / entrance).chmod(0o755)
     suffix = ".exe" if sys.platform == "win32" else ""
     smoke(runtime / name / (name + suffix))
     print(f"Test package: {package}")

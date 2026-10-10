@@ -21,8 +21,8 @@ from runtime_paths import APP, ROOT, tool_command
 from clean_codex_catalog import Audit, connect, validate_confirmed_deleted_plan
 
 
-# Observed through Settings > Data controls in the current signed-in ChatGPT UI.
-CLOUD_SETTINGS_URL = "https://chatgpt.com/settings/data-controls?view=archived-chats"
+# Observed through Settings > Archived chats in the signed-in ChatGPT web UI.
+CLOUD_SETTINGS_URL = "https://chatgpt.com/settings/archived-chats"
 UUID = re.compile(r"[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}")
 
 
@@ -77,10 +77,15 @@ def cloud_workflow(args, audit: Audit) -> int:
     if choice in ("", "3"):
         return 0
     if choice == "1":
-        print(ui.text("請使用相同帳號, 在 資料控制 > 已封存的對話 > 管理 核對標題與日期, 再逐筆按刪除並確認",
-                      "Use the same account. Go to Data controls > Archived chats > Manage. Check each title and date, then delete each chat"))
-        print(ui.text("此選項只開啟管理入口, 網頁刪除完成後, 可再次選第 2 項處理 Codex 殘留索引",
-                      "After deleting chats in ChatGPT, use option 2 to clean any remaining Codex cache entries"))
+        print(ui.text("請使用相同帳號與工作區, 在 設定 > Archived chats 核對標題與日期, 再逐筆按刪除並確認. 部分介面仍在 資料控制 > 已封存的對話 > 管理",
+                      "Use the same account and workspace. Go to Settings > Archived chats, check each title and date, then delete each chat. Some interfaces still use Data controls > Archived chats > Manage"))
+        print(ui.text("刪除後重新整理封存清單, 再開啟原對話連結核對. 清單缺席或載入失敗本身不代表刪除成功",
+                      "After deletion, refresh the archive list and reopen the original chat link. A missing entry or loading failure alone does not prove deletion"))
+        print(ui.text("若刪除後又出現, 或內容仍可載入, 請保留原對話連結與發生時間, 不要使用第 2 項清理本機索引. 可從對話的 更多 > 刪除 核對操作, 持續失敗時請由 OpenAI 支援檢查雲端狀態",
+                      "If the chat reappears or its content still loads, keep its original link and the time of the attempt. Do not use option 2 for local cache cleanup. Check the More > Delete action inside the chat, and ask OpenAI Support to inspect the cloud state if deletion keeps failing"))
+        print("https://help.openai.com/en/articles/6614161-how-can-i-contact-support")
+        print(ui.text("此選項只開啟管理入口, 雲端刪除已確認後, 才可選第 2 項處理 Codex 殘留索引",
+                      "This option only opens the archive manager. Use option 2 for remaining Codex cache entries only after cloud deletion is confirmed"))
         opened = webbrowser.open(CLOUD_SETTINGS_URL)
         audit.record("cloud_archive_manager_handoff", url=CLOUD_SETTINGS_URL, browser_opened=opened,
                      cloud_deleted=False, live_cloud_verified=False, status="manual_cloud_deletion_pending")
@@ -89,8 +94,8 @@ def cloud_workflow(args, audit: Audit) -> int:
         return 2
     if choice != "2":
         raise ValueError("Invalid cloud archive operation")
-    print(ui.text("僅輸入已在相同帳號永久刪除的對話 ID, 無法載入或清單缺席不能當成刪除證據",
-                  "Only use IDs permanently deleted in the same ChatGPT account. A loading error or missing entry does not prove deletion"))
+    print(ui.text("僅輸入已在相同帳號永久刪除的對話 ID. 刪除後又出現、內容仍可載入、無法載入或清單缺席, 都不能當成已完成雲端刪除的證據",
+                  "Only use IDs permanently deleted in the same ChatGPT account. A reappearing chat, content that still loads, a loading error or a missing entry does not establish completed cloud deletion"))
     raw = input(ui.text("精確 ID, 以逗號或空白分隔 (空白取消): ", "Exact IDs, separated by commas or spaces (empty to cancel): ")).strip()
     if not raw:
         return 0

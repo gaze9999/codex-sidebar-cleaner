@@ -1,3 +1,2 @@
 launch-cli.cmd text eol=crlf
 launch-cli.command text eol=lf
-launch-cli.ps1 text eol=crlf
