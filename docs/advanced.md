@@ -18,13 +18,13 @@ python app/organize_local_threads.py --section-name "我的本機任務"
 | 操作 | 命令 / 格式 |
 | --- | --- |
 | 舊專案參照 | `python app/clean_sidebar_references.py --plan plan.json`, 可由 `--interactive` 核對並產生計畫 |
-| 已核對的參照與重新同步 | `python app/maintain_sidebar.py --sidebar-reference-plan plan.json --apply`, 使用已核對的計畫並執行同步 |
+| 已核對的參照與索引清理 | `python app/maintain_sidebar.py --sidebar-reference-plan plan.json --apply`, 使用已核對的計畫移除參照 |
 | 建立封存請求 | `python app/plan_sidebar_cleanup.py --titles-file titles.json`, 標題檔為 JSON 字串陣列 |
 | 對齊其他裝置最近清單 | `python app/clean_codex_catalog.py --align-recents plan.json`, 只處理本機非專案快取 |
 
 最近清單計畫需 `schema_version: 1`, `scope: "visible_nonproject_chatgpt"`, `confirmed_complete_reference: true`, 正確 `host_id`, 非空且不重疊的 `keep_ids` / `remove_ids`, 新對話或專案歸屬改變時必須重新核對, 不作為永久白名單
 
-封存請求使用歷史精確 ID 與標題, 排除保留分界及目前有效索引, 同名與模糊比對僅供核對. 請求需透過已登入的 Codex app 執行, 並另行核對封存清單. `maintain_sidebar.py --reviewed-sidebar-plan plan.json --archived-snapshot snapshot.json` 會檢查同帳戶且一小時內取得的原生封存快照, 尚未完成時不進行本機同步
+封存請求使用歷史精確 ID 與標題, 排除保留分界及目前有效索引, 同名與模糊比對僅供核對. 請求需透過已登入的 Codex app 執行, 並另行核對封存清單. `maintain_sidebar.py --reviewed-sidebar-plan plan.json --archived-snapshot snapshot.json` 會檢查同帳戶且一小時內取得的原生封存快照, 尚未完成時不進行本機清理
 
 ## 已確認從雲端刪除的索引
 
@@ -76,4 +76,6 @@ python app/compare_cloud_catalog.py --cloud-snapshot cloud-snapshot.json
 
 各 CLI 的 `--help` 列出可用選項, 預設介面為繁體中文, 可加 `--lang en` 改用英文, 或 `--lang zh-TW` 指定中文, 終端機編碼無法輸出中文時自動改用英文. `SIDEBAR_CLEANER_LANG` 環境變數也可設定語言, 命令列選項優先. `--codex-home` 指定 Codex 資料目錄, `--output-dir` 指定 logs / backups 的父目錄, 使用自訂 `--database` 時須提供對應的 `--codex-home`, `--log-root` 可重複指定
 
-`maintain_sidebar.py` 先檢查與掃描, 依核對計畫處理參照後要求 App 重新同步. 依提示退出與重開 App, 預設最多等待 30 分鐘, 同步完成後只清除有刪除證據的索引, 若無待清索引就不要求再次退出. `--wait-seconds` 與 `--reconcile-wait-seconds` 可調整等待時間
+`maintain_sidebar.py` 先檢查與掃描, 依核對計畫處理參照, 刪除記錄僅供診斷, 索引清理使用 `clean_codex_catalog.py --confirmed-deleted-plan plan.json --apply` 或主選單第 3 項. 一般修復保留 App 同步進度, 不會在流程中要求重開 App 重建清單. 有待清索引時依提示退出 App, 清理完成後再重開 App. `--wait-seconds` 可調整退出等待時間, 預設 30 分鐘
+
+只有明確需要重建清單時才加 `--apply --reconcile`, 此操作會重設初始建立狀態與同步游標, 重開 App 後清單可能持續更新, `--reconcile-wait-seconds` 可調整同步等待時間. 同步逾時會停止後續清理, 不會自動再次重設. 舊流程已重設的進度不會由新版自動還原, 若持續刷新, 保留當次 `logs/sidebar-workflow-*`、`logs/catalog-run-*` 與 App 記錄檔供核對

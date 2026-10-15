@@ -1,7 +1,7 @@
-"""Verify, scan, reconcile with the app, and clean confirmed deleted entries.
+"""Verify, scan, and clean confirmed deleted entries without resetting app sync.
 
 Preview by default. Use --apply from an external console, then close Codex/ChatGPT.
-The workflow waits for the reopened desktop app to finish reconciliation before cleanup.
+Explicit --reconcile waits for the reopened app before cleanup; normal maintenance preserves sync state.
 """
 from __future__ import annotations
 
@@ -152,10 +152,11 @@ def run_workflow(args: argparse.Namespace, audit: Audit) -> int:
             code = stage("clean_reviewed_sidebar_references", reference_command)
             if code:
                 return code
-        code = stage("request_app_reconciliation", [*cleaner, "--apply", "--reconcile", "--wait-seconds", str(args.wait_seconds)])
-        if code:
-            return code
-        wait_for_reconciliation(args.codex_home, args.reconcile_wait_seconds, audit)
+        if getattr(args, "reconcile", False):
+            code = stage("request_app_reconciliation", [*cleaner, "--apply", "--reconcile", "--wait-seconds", str(args.wait_seconds)])
+            if code:
+                return code
+            wait_for_reconciliation(args.codex_home, args.reconcile_wait_seconds, audit)
         steps = [
             ("clean_confirmed_deleted", [*cleaner, "--apply", "--wait-seconds", str(args.wait_seconds)]),
         ]
@@ -168,15 +169,17 @@ def run_workflow(args: argparse.Namespace, audit: Audit) -> int:
     audit.record("workflow_completed", apply=args.apply,
                  app_reconciliation_pending=False, live_cloud_verified=False)
     if args.apply:
-        print(ui.text("已完成 App 清單核對與已確認刪除的索引清理, 其他側邊欄或載入錯誤可能仍存在, 請查看 load-diagnostics.json 並重開 Codex", "Sync and confirmed-deleted cache cleanup finished. Reopen Codex. If entries or loading errors remain, check load-diagnostics.json."), flush=True)
+        print(ui.text("已完成已確認刪除的索引清理, 其他側邊欄或載入錯誤可能仍存在, 請查看 load-diagnostics.json 並重開 Codex", "Confirmed-deleted cache cleanup finished. Reopen Codex. If entries or loading errors remain, check load-diagnostics.json."), flush=True)
     else:
-        print(ui.text("預覽完成, 使用 --apply 執行清單核對與清理", "Preview finished. Use --apply to reconcile and clean."), flush=True)
+        print(ui.text("預覽完成, 使用 --apply 清理已確認刪除的索引", "Preview finished. Use --apply to clean confirmed-deleted entries."), flush=True)
     return 0
 
 
 def main() -> int:
-    parser = ui.parser("檢查側邊欄, 核對舊參照, 重新同步並清除已確認刪除的索引", __doc__)
+    parser = ui.parser("檢查側邊欄, 核對舊參照並清除已確認刪除的索引", __doc__)
     parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--reconcile", action="store_true",
+                        help="Explicitly reset app sync and wait for reconciliation; may rebuild the sidebar")
     reference = parser.add_mutually_exclusive_group()
     reference.add_argument("--review-sidebar-references", action="store_true",
                            help="Review missing cached project references before app reconciliation")

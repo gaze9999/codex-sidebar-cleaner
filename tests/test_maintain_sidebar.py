@@ -109,7 +109,7 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(failures[pending]['category'], 'thread_load_failed')
             self.assertEqual(cleaner.discover_deleted([root]), {})
 
-    def test_cleanup_refreshes_deleted_ids_after_exit_but_preserves_reviewed_plan_scope(self):
+    def test_unscoped_logs_require_review_and_reviewed_plan_preserves_scope(self):
         first = '00000000-0000-0000-0000-000000000001'
         second = '00000000-0000-0000-0000-000000000002'
         for reviewed in (False, True):
@@ -139,8 +139,11 @@ class WorkflowTests(unittest.TestCase):
                      patch.object(cleaner, 'app_running', return_value=False), \
                      patch.object(cleaner.time, 'sleep'), \
                      patch.object(cleaner, 'cleanup') as cleanup:
-                    self.assertEqual(cleaner.main(), 0)
-                    self.assertEqual(cleanup.call_args.args[2], [first] if reviewed else [first, second])
+                    self.assertEqual(cleaner.main(), 0 if reviewed else 2)
+                    if reviewed:
+                        self.assertEqual(cleanup.call_args.args[2], [first])
+                    else:
+                        cleanup.assert_not_called()
 
     def test_recents_project_overlap_is_reported_without_removal(self):
         one = '00000000-0000-0000-0000-000000000001'
@@ -245,10 +248,75 @@ class WorkflowTests(unittest.TestCase):
              patch.object(cleaner.subprocess, 'run', return_value=Mock(stdout=output)):
             self.assertTrue(cleaner.app_running())
 
-    def run_case(self, apply, codes, wait_error=None):
+    def test_history_from_another_home_does_not_authorize_deletion(self):
+        key = '00000000-0000-0000-0000-000000000001'
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            history = root / 'logs/catalog-run-old'
+            history.mkdir(parents=True)
+            (history / 'cleanup.jsonl').write_text(json.dumps({
+                'event': 'log_evidence', 'evidence': {key: {'source': 'other-home/log', 'line': 1}}
+            }) + '\n', encoding='utf-8')
+            for host in ('account-A', 'account-B'):
+                database = root / (host + '.sqlite')
+                with closing(sqlite3.connect(database)) as db, db:
+                    db.execute('CREATE TABLE local_thread_catalog '
+                               '(host_id TEXT,thread_id TEXT,display_title TEXT,source_kind TEXT)')
+                    db.execute('INSERT INTO local_thread_catalog VALUES (?,?,?,?)',
+                               (host, key, 'Preserve', 'chatgpt'))
+                with patch.object(cleaner.sys, 'argv', ['clean_codex_catalog.py', '--apply',
+                        '--database', str(database), '--output-dir', str(root)]), \
+                     patch.object(cleaner.sys, 'platform', 'win32'), \
+                     patch.object(cleaner, 'validate_schema'), patch.object(cleaner, 'verify'), \
+                     patch.object(cleaner, 'log_roots', return_value=[]), \
+                     patch.object(cleaner, 'diagnose_load_failures', return_value={'failures': []}), \
+                     patch.object(cleaner, 'cleanup') as cleanup, patch.object(cleaner, 'app_running') as running:
+                    self.assertEqual(cleaner.main(), 2)
+                    cleanup.assert_not_called()
+                    running.assert_not_called()
+                with closing(sqlite3.connect(database)) as db:
+                    self.assertEqual(db.execute('SELECT host_id,thread_id FROM local_thread_catalog').fetchall(),
+                                     [(host, key)])
+
+    def test_windows_cli_layouts_are_excluded_but_unknown_processes_block(self):
+        for path, expected in [
+            (r'C:\Users\test\AppData\Local\OpenAI\Codex\bin\abc123\codex.exe', False),
+            (r'C:\Users\test\.vscode\extensions\openai.chatgpt-1.0-win32-x64\bin\windows-x86_64\codex.exe', False),
+            (r'C:\Program Files\Codex\Codex.exe', True), (None, True),
+        ]:
+            with self.subTest(path=path), patch.object(cleaner.sys, 'platform', 'win32'), \
+                 patch.object(cleaner.subprocess, 'CREATE_NO_WINDOW', 0, create=True), \
+                 patch.object(cleaner.subprocess, 'run', side_effect=[
+                     Mock(stdout=b'"codex.exe","123"'),
+                     Mock(stdout=json.dumps([{'ExecutablePath': path}]).encode())]):
+                self.assertEqual(cleaner.app_running(), expected)
+        with patch.object(cleaner.sys, 'platform', 'win32'), \
+             patch.object(cleaner.subprocess, 'CREATE_NO_WINDOW', 0, create=True), \
+             patch.object(cleaner.subprocess, 'run', side_effect=[
+                 Mock(stdout=b'"codex.exe","123"'), RuntimeError('access denied')]):
+            with self.assertRaisesRegex(RuntimeError, 'access denied'):
+                cleaner.app_running()
+
+    def test_process_query_timeout_is_bounded_and_stops_mutation(self):
+        with patch.object(cleaner.sys, 'platform', 'win32'), \
+             patch.object(cleaner.subprocess, 'CREATE_NO_WINDOW', 0, create=True), \
+             patch.object(cleaner.subprocess, 'run', side_effect=cleaner.subprocess.TimeoutExpired('tasklist', 15)) as run, \
+             patch.object(cleaner, 'connect') as connect:
+            with self.assertRaises(cleaner.subprocess.TimeoutExpired):
+                cleaner.cleanup(Path('unused'), Mock(), [], Path('unused-backup'))
+            self.assertEqual(run.call_args.kwargs['timeout'], 15)
+            connect.assert_not_called()
+
+    def test_macos_app_path_with_spaces_blocks_mutation(self):
+        with patch.object(cleaner.sys, 'platform', 'darwin'), \
+             patch.object(cleaner.subprocess, 'run', return_value=Mock(
+                 returncode=0, stdout=b'/Volumes/My Apps/Codex.app/Contents/MacOS/Codex\n')):
+            self.assertTrue(cleaner.app_running())
+
+    def run_case(self, apply, codes, wait_error=None, reconcile=True):
         args = argparse.Namespace(apply=apply, codex_home=Path('test-home'),
                                   output_dir=Path('test-output'), log_root=[Path('app-logs')],
-                                  codex=None, section_name='Local', wait_seconds=7, reconcile_wait_seconds=7)
+                                  codex=None, section_name='Local', wait_seconds=7, reconcile_wait_seconds=7, reconcile=reconcile)
         audit = Mock()
         with patch.object(workflow, 'wait_for_reconciliation', side_effect=wait_error) as wait, \
              patch.object(workflow.subprocess, 'run', side_effect=[Mock(returncode=c) for c in codes]) as run:
@@ -257,9 +325,27 @@ class WorkflowTests(unittest.TestCase):
             except TimeoutError:
                 self.assertEqual(len(run.call_args_list), 3)
                 raise
-        if apply and len(run.call_args_list) > 3:
+        if not reconcile:
+            wait.assert_not_called()
+        if apply and reconcile and len(run.call_args_list) > 3:
             wait.assert_called_once_with(args.codex_home, 7, audit)
         return result, [call.args[0] for call in run.call_args_list], audit
+
+    def test_default_maintenance_preserves_sync_and_never_waits_for_restart(self):
+        result, commands, audit = self.run_case(True, [0, 0, 0], reconcile=False)
+        self.assertEqual(result, 0)
+        self.assertEqual(len(commands), 3)
+        self.assertIn('--apply', commands[-1])
+        self.assertTrue(all('--reconcile' not in command for command in commands))
+
+    def test_windows_detects_current_and_legacy_codex_processes(self):
+        for name, expected in [('codex-desktop.exe', True),
+                               ('ChatGPT.exe', True), ('python.exe', False)]:
+            with self.subTest(name=name), patch.object(cleaner.sys, 'platform', 'win32'), \
+                 patch.object(cleaner.subprocess, 'CREATE_NO_WINDOW', 0, create=True), \
+                 patch.object(cleaner.subprocess, 'run', return_value=Mock(
+                     stdout=f'"{name}","123","Console","1","10 K"'.encode())):
+                self.assertEqual(cleaner.app_running(), expected)
 
     def test_apply_order_and_shared_options(self):
         result, commands, audit = self.run_case(True, [0, 0, 0, 0])

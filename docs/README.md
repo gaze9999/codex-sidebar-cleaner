@@ -4,7 +4,7 @@
 
 ## 開始使用
 
-目前使用原始碼 CLI, 需要既有 Python 3.10+ 與標準函式庫, 不自動安裝相依套件. 1.0.0 前不提供 GitHub Release, 舊版免安裝附件已撤下. 本機封存刪除與對話整理仍需相容的 Codex CLI
+目前使用原始碼 CLI, 需要既有 Python 3.10+ 與標準函式庫, 不自動安裝相依套件. 下載包依明確發布授權交付, 來源 Tag 與 GitHub Release 分開管理. 本機封存刪除與對話整理仍需相容的 Codex CLI
 
 | 平台 / 來源 | 啟動入口 |
 | --- | --- |
@@ -14,11 +14,11 @@
 
 請保留原始碼的完整目錄結構. 日後下載免安裝包時需完整解壓, 保留 `runtime/` 與其他子目錄, 不單獨搬出 exe, macOS 選符合處理器的套件
 
-預設繁體中文, 主選單與進階選單可輸入 `L` 切換 English, 編碼無法輸出中文時自動改用英文. Windows 啟動器保持純 ASCII
+預設繁體中文, 主選單與整理選單可輸入 `L` 切換 English, 編碼無法輸出中文時自動改用英文. Windows 啟動器保持純 ASCII
 
 可在 CMD / macOS 入口後加 `en` 直接以英文啟動, PowerShell 使用 `./launch-cli.cmd en`
 
-請從 Codex 外部啟動, 需要清理快取時, 依提示完全退出與重開 App, 並保留 cleaner 終端機. macOS 請結束 App, 不只關閉視窗
+請從 Codex 外部啟動, 需要清理快取時, 依提示完全退出 App, 清理完成後再重開 App, 並保留 cleaner 終端機. macOS 請結束 App, 不只關閉視窗
 
 ## 選單
 
@@ -26,21 +26,23 @@
 
 | CLI 主選單 | 用途 |
 | --- | --- |
-| 1. 修復側邊欄 | 檢查與掃描, 核對舊參照, 等待 App 重新同步, 再清理有刪除證據的索引 |
-| 2. 清理封存對話 | 選擇本機 Codex 刪除, 或 ChatGPT 雲端管理與殘留索引流程 |
-| 3. 進階工具 | 已核對的修正清單, 舊專案參照, 封存清單, 本機對話整理與單獨索引清理 |
-| L. English | 切換為英文, 英文介面顯示 `L. Chinese`, 可切回中文 |
+| 1. 檢查側邊欄 (唯讀) | 掃描索引、專案參照與載入錯誤, 只產生本機報告 |
+| 2. 整理側邊欄 | 移除指定參照、套用計畫或整理本機分類 |
+| 3. 管理 ChatGPT 雲端封存 | 開啟網頁管理, 或核對精確 ID 後清理已刪除對話的本機索引 |
+| 4. 永久刪除本機封存對話 | 依專案預覽範圍, 備份後輸入 `DELETE` 確認 |
+| L. English | 切換為英文, 英文介面可用 `L. Chinese` 切回中文 |
 | 0. 離開 | 結束工具 |
 
-進階選單按 `0` 返回主選單:
+整理側邊欄選單按 `0` 返回主選單:
 
-| 進階工具 | 用途 |
+| 整理側邊欄 | 用途 |
 | --- | --- |
-| 1. 執行已核對的修正清單 | 選擇計畫 JSON, 本機有 `logs/pending-sidebar-reference-plan.json` 時可按 Enter 使用 |
-| 2. 移除舊專案參照 | 核對並移除指定的本機參照, 保留雲端專案與對話 |
-| 3. 建立封存清單 | Windows 使用截圖, macOS 使用已核對的標題 JSON, 只建立請求, 不直接封存 |
-| 4. 整理本機對話 | 把未分類且未封存的本機對話移到 `Local Codex` 區段, 保留其他分類與內容 |
-| 5. 清除已刪除對話的快取 | 清理已有 `conversation_deleted` 證據的本機 ChatGPT 索引 |
+| 1. 選擇並移除舊專案參照 | 只修改本機側邊欄分類, 保留雲端專案與對話 |
+| 2. 套用已核對的參照清理計畫 | 選擇計畫 JSON, 有 `logs/pending-sidebar-reference-plan.json` 時可按 Enter 使用 |
+| 3. 將未分類本機對話集中到 Local Codex | 保留既有分類與對話內容 |
+| 4. 建立雲端封存請求清單 | Windows 使用截圖, macOS 使用已核對的標題 JSON, 只建立計畫 |
+
+操作結束後顯示結果, 按 Enter 關閉工具
 
 ## 封存對話
 
@@ -54,6 +56,9 @@
 
 - `logs/` 保存計畫與逐筆結果, `backups/` 保存修改前的資料, 不要公開上傳, 可能包含私人對話資訊
 - 修改前會核對帳戶, 精確 ID, 來源及相依項目, 狀態改變或資料格式不符就停止
+- 歷史 `conversation_deleted` 記錄未綁定帳戶與資料目錄, 只供診斷, 不自動清除索引, 請由主選單第 3 項核對並確認
+- Windows 會排除已辨識的 Codex CLI 與 VS Code CLI 安裝路徑, 未知的 `codex.exe` 或無法讀取的程序路徑仍會阻擋寫入
+- 尚未建立自訂側邊欄區段時略過參照清理, 已提供計畫但參照不存在或資料格式異常時停止
 - 無法載入, 404, 同名, OCR 或清單缺席都不是刪除證據, 完成 App 同步也不代表逐筆驗證了全部雲端歷史
 - 本機對話永久刪除無法在 App 還原, 中途失敗時, 先前成功的刪除仍保留, 請先核對記錄檔再重試
 - 本機測試使用隔離資料, 不刪除真實對話, 免安裝包的跨平台檢查由 CI 執行, 尚未執行的 CI 不列為驗證完成
@@ -89,6 +94,6 @@ python -X utf8 -m unittest tests.test_cli
 
 GitHub Actions 的 Build portable CLI 可手動執行, 流程設定為產出 Windows x64 ZIP、macOS Intel 與 Apple Silicon tar.gz, 共三份 CLI 套件與各自的 SHA-256. 每個平台檢查 SQLite runtime、全部工具的說明入口與 CLI 選單
 
-1.0.0 前不建立 GitHub Release, 建置只保存 Actions artifacts. 手動執行也只保存 artifacts. 推送新的 1.0.0 或以上正式版本 tag (如 `v1.0.0`) 後, 全部平台通過檢查才建立 GitHub Release 並附加套件與 SHA-256, 流程不自行建立 tag, 更新既有 tag 不重建附件. 不完整版本號或 prerelease tag 不自動發布. 1.0.0 或以上的已發布正式 Release 也可觸發建置並附加通過檢查的產物
+完整版本 annotated Tag 使用 `vX.Y.Z`, 0.x 與 1.x 使用相同程序. 推送 Tag 只建置 Actions artifacts, 不建立 Release. 手動執行指定既有 Tag, `publish` 預設 false, 明確啟用且三平台全部通過後才將套件與 SHA-256 附加至草稿 Release, 核對所有資產後依授權公開. 流程不自行建立 Tag、不自動公開、不覆寫已發布 Release 或重複資產, 不完整版本號與 prerelease Tag 不進入此正式建置流程
 
 macOS 使用原生 runner 打包, 保留符號連結與檔案權限, 本機 Windows 檢查不代表 macOS 已通過

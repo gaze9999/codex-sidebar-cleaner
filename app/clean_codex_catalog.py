@@ -1,7 +1,7 @@
 """依全部桌面記錄檔清理已確認 conversation_deleted 的 ChatGPT 側欄索引
 
 python clean_codex_catalog.py          唯讀檢查並留下記錄檔
-python clean_codex_catalog.py --apply  等待桌面退出, 備份後以交易清理
+python clean_codex_catalog.py --apply --confirmed-deleted-plan plan.json  核對帳戶與 ID, 備份後清理
 python clean_codex_catalog.py --apply --reconcile  重設雲端清單同步, 交由 App 核對最近約 30 天
 
 Python 3.10+ / Windows 或 macOS
@@ -312,21 +312,52 @@ class Audit:
         print(f"{entry['time']} {ui.event_message(event)}", flush=True)
 
 
+def known_cli_path(path: str) -> bool:
+    normalized = path.replace("\\", "/").lower()
+    return bool(re.search(
+        r"/(?:openai/codex/bin/[0-9a-f]+|"
+        r"extensions/openai\.chatgpt-[^/]+/bin/windows-(?:x86_64|aarch64)|"
+        r"@openai/codex[^/]*/vendor/[^/]+/codex)/codex\.exe$", normalized))
+
+
 def app_running() -> bool:
     if sys.platform == "win32":
         result = subprocess.run(
             ["tasklist.exe", "/FO", "CSV", "/NH"], capture_output=True,
-            check=True, creationflags=subprocess.CREATE_NO_WINDOW,
+            check=True, timeout=15, creationflags=subprocess.CREATE_NO_WINDOW,
         )
         rows = csv.reader(result.stdout.decode("utf-8", errors="replace").splitlines())
-        return any(row and row[0].lower() in {"chatgpt.exe", "codex-desktop.exe"} for row in rows)
+        names = {row[0].lower() for row in rows if row}
+        if names & {"chatgpt.exe", "codex-desktop.exe"}:
+            return True
+        if "codex.exe" not in names:
+            return False
+        # The desktop and CLI share a filename; only exclude known CLI layouts.
+        result = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
+             "[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new(); "
+             "@(Get-Process -ErrorAction Stop | Where-Object { $_.ProcessName -eq 'codex' } | "
+             "Select-Object @{Name='ExecutablePath';Expression={$_.Path}}) | ConvertTo-Json -Compress"],
+            capture_output=True, check=True, timeout=15, creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        raw = result.stdout.decode("utf-8-sig").strip()
+        processes = json.loads(raw) if raw else []
+        if isinstance(processes, dict):
+            processes = [processes]
+        if not isinstance(processes, list):
+            raise RuntimeError("Unsupported process inspection response; nothing changed.")
+        for process in processes:
+            path = process.get("ExecutablePath") if isinstance(process, dict) else None
+            if not isinstance(path, str) or not known_cli_path(path):
+                return True
+        return False
     if sys.platform == "darwin":
         # macOS pgrep -x can miss a main app whose process name is a truncated path.
-        result = subprocess.run(["ps", "-axo", "command="], capture_output=True, check=False)
+        result = subprocess.run(["ps", "-axo", "command="], capture_output=True, check=False, timeout=15)
         if result.returncode != 0:
             raise RuntimeError("Could not inspect running apps; refusing to modify the database.")
         lines = result.stdout.decode("utf-8", errors="replace").splitlines()
-        pattern = re.compile(r"^\S*/(?:Codex|ChatGPT)\.app/Contents/MacOS/(?:Codex|ChatGPT)(?:\s|$)")
+        pattern = re.compile(r"^/(?:.*/)?(?:Codex|ChatGPT)\.app/Contents/MacOS/(?:Codex|ChatGPT)(?:\s|$)")
         return any(pattern.match(line.strip()) for line in lines)
     raise RuntimeError("Only Windows and macOS are supported.")
 
@@ -655,7 +686,7 @@ def main() -> int:
             if confirmed_plan is not None:
                 validate_confirmed_deleted_plan(reader, confirmed_plan)
             ids = ([entry["id"] for entry in confirmed_plan["entries"]] if confirmed_plan else
-                   recents_plan["remove_ids"] if recents_plan else sorted(evidence))
+                   recents_plan["remove_ids"] if recents_plan else [])
             rows = targets(reader, ids)
             verify(reader, sorted(evidence), audit)
             diagnostics = diagnose_load_failures(reader, roots, audit)
@@ -665,6 +696,11 @@ def main() -> int:
         if not args.apply:
             print(ui.text("唯讀檢查: {count} 個符合項目, 記錄檔: {path}", "Read-only check: {count} matching entries. Log: {path}", count=len(rows), path=audit.path))
             return 0
+        if not args.reconcile and recents_plan is None and confirmed_plan is None and evidence:
+            audit.record("deletion_review_required", diagnostic_ids=sorted(evidence),
+                         reason="Log evidence has no verified account/home binding; use a reviewed confirmed-deleted plan.")
+            print(ui.text("刪除記錄未綁定目前帳戶與資料目錄, 請先核對精確 ID, 再使用雲端已刪除索引清理入口", "Deletion logs are not bound to this account and data directory. Review exact IDs through the cloud-deleted cache cleanup flow."), flush=True)
+            return 2
         if not cleanup_requires_desktop_exit(apply=args.apply, reconcile=args.reconcile, rows=rows):
             audit.record("no_op", reason="No confirmed-deleted catalog entries matched; other sidebar or loading errors may remain.",
                          catalog_rows_deleted=0, ui_verified=False)
@@ -676,7 +712,7 @@ def main() -> int:
                 return 2
             return 0
         audit.record("waiting_for_desktop_exit", timeout_seconds=args.wait_seconds)
-        print(ui.text("請完全退出 Codex/ChatGPT 並保留此外部視窗", "Quit Codex/ChatGPT completely. Keep this terminal open."), flush=True)
+        print(ui.text("請完全退出 Codex/ChatGPT 並保留此外部視窗, 無法辨識的 codex.exe 也需退出", "Quit Codex/ChatGPT and any unidentified codex.exe processes. Keep this terminal open."), flush=True)
         deadline = time.monotonic() + args.wait_seconds
         while app_running():
             if time.monotonic() >= deadline:
@@ -686,7 +722,7 @@ def main() -> int:
         # 退出後重新掃描，納入剛重現且延遲寫入日誌的其他對話。
         evidence.update(discover_deleted(roots))
         if recents_plan is None and confirmed_plan is None:
-            ids = sorted(evidence)
+            ids = []
         with closing(connect(database, "ro")) as reader:
             validate_schema(reader)
         audit.record("final_log_evidence", confirmed_deleted_count=len(evidence), evidence=evidence)

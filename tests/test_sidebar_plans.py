@@ -30,6 +30,28 @@ def state():
 
 
 class SidebarReferencesTests(unittest.TestCase):
+    def test_missing_sections_skip_but_malformed_or_reviewed_state_stops(self):
+        for payload, reviewed, expected in [
+            ({}, False, 0), ({'electron-persisted-atom-state': {}}, False, 0),
+            ({'electron-persisted-atom-state': {cleaner.KEY: []}}, False, 1),
+            ({}, True, 1),
+        ]:
+            with self.subTest(payload=payload, reviewed=reviewed), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                state_path = root / '.codex-global-state.json'
+                original = json.dumps(payload)
+                state_path.write_text(original, encoding='utf-8')
+                args = ['clean_sidebar_references.py', '--interactive', '--codex-home', str(root),
+                        '--output-dir', str(root)]
+                if reviewed:
+                    plan = root / 'plan.json'
+                    plan.write_text(json.dumps(cleaner.make_plan(state(), 'account', [OLD])), encoding='utf-8')
+                    args = [args[0], '--plan', str(plan), '--apply', *args[2:]]
+                with patch('sys.argv', args), patch.object(cleaner, 'app_running') as running:
+                    self.assertEqual(cleaner.main(), expected)
+                    running.assert_not_called()
+                self.assertEqual(state_path.read_text(encoding='utf-8'), original)
+
     def test_preview_and_exact_removal_preserve_accounts_sections_and_conversations(self):
         before = state()
         snapshot = copy.deepcopy(before)

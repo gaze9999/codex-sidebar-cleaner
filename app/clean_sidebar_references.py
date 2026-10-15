@@ -137,7 +137,18 @@ def main() -> int:
         path = args.codex_home.resolve(strict=True) / ".codex-global-state.json"
         state = json.loads(path.read_bytes())
         plan = json.loads(args.plan.read_text(encoding="utf-8-sig")) if args.plan else None
-        accounts = state["electron-persisted-atom-state"][KEY]
+        if not isinstance(state, dict):
+            raise ValueError("Unsupported sidebar state.")
+        atoms = state.get("electron-persisted-atom-state", {})
+        if not isinstance(atoms, dict):
+            raise ValueError("Unsupported sidebar atom state.")
+        accounts = atoms.get(KEY, {})
+        if not isinstance(accounts, dict):
+            raise ValueError("Unsupported sidebar account state.")
+        if not accounts and plan is None:
+            audit.record("no_op", reason="No custom sidebar sections have been created.")
+            print(ui.text("尚未建立自訂側邊欄區段, 沒有待清理的專案參照", "No custom sidebar sections; no project references to clean."), flush=True)
+            return 0
         account = plan["account_id"] if plan else args.account_id
         if account is None:
             if len(accounts) != 1:

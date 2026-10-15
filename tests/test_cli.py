@@ -105,13 +105,13 @@ class LauncherTests(unittest.TestCase):
 
     def test_every_menu_route_preserves_script_flags_and_language(self):
         cases = (
-            (["1", ""], "maintain_sidebar.py", ["--apply", "--review-sidebar-references"]),
-            (["2", ""], "clean_archived_conversations.py", ["--interactive"]),
-            (["3", "1", ""], "maintain_sidebar.py", ["--apply", "--interactive-sidebar-plan"]),
-            (["3", "2", ""], "clean_sidebar_references.py", ["--interactive"]),
-            (["3", "3", ""], "plan_sidebar_cleanup.py", ["--interactive"]),
-            (["3", "4", ""], "organize_local_threads.py", ["--apply"]),
-            (["3", "5", ""], "clean_codex_catalog.py", ["--apply"]),
+            (["1", ""], "maintain_sidebar.py", []),
+            (["3", ""], "clean_archived_conversations.py", ["--interactive", "--source", "cloud"]),
+            (["4", ""], "clean_archived_conversations.py", ["--interactive", "--source", "local"]),
+            (["2", "1", ""], "clean_sidebar_references.py", ["--interactive"]),
+            (["2", "2", ""], "maintain_sidebar.py", ["--apply", "--interactive-sidebar-plan"]),
+            (["2", "3", ""], "organize_local_threads.py", ["--apply"]),
+            (["2", "4", ""], "plan_sidebar_cleanup.py", ["--interactive"]),
         )
         for inputs, script, flags in cases:
             with self.subTest(script=script, flags=flags):
@@ -120,13 +120,13 @@ class LauncherTests(unittest.TestCase):
                 run.assert_called_once_with([sys.executable, "-X", "utf8", "-u",
                                              str(Path("fixture folder") / script), "--lang", "zh-TW", *flags],
                                             check=False)
-                self.assertIn("修復側邊欄", output)
+                self.assertIn("檢查側邊欄", output)
                 self.assertIn("操作已結束", output)
 
     def test_language_switch_in_both_menus_is_forwarded_to_the_child(self):
-        for inputs, language in ((["l", "2", ""], "en"),
-                                 (["3", "L", "4", ""], "en"),
-                                 (["L", "3", "L", "5", ""], "zh-TW")):
+        for inputs, language in ((["l", "3", ""], "en"),
+                                 (["2", "L", "4", ""], "en"),
+                                 (["L", "2", "L", "4", ""], "zh-TW")):
             with self.subTest(inputs=inputs):
                 _, run, output = self.launch(inputs)
                 self.assertEqual(run.call_count, 1)
@@ -137,19 +137,19 @@ class LauncherTests(unittest.TestCase):
         for arguments in (("en",), ("--lang", "en"), ("--lang=en",)):
             with self.subTest(arguments=arguments):
                 _, run, output = self.launch(["1", ""], arguments=arguments)
-                self.assertIn("Fix sidebar", output)
-                self.assertNotIn("修復側邊欄", output)
+                self.assertIn("Inspect sidebar", output)
+                self.assertNotIn("檢查側邊欄", output)
                 self.assertEqual(run.call_args.args[0][5:7], ["--lang", "en"])
 
     def test_fallback_remains_english_when_chinese_is_selected_again(self):
-        _, run, output = self.launch(["L", "2", ""], encoding="ascii")
+        _, run, output = self.launch(["L", "3", ""], encoding="ascii")
         self.assertEqual(run.call_count, 1)
         self.assertEqual(run.call_args.args[0][5:7], ["--lang", "en"])
         self.assertIn("Chinese output is unavailable", output)
         output.encode("ascii")
 
     def test_exit_back_eof_and_invalid_choices_do_not_start_an_operation(self):
-        for inputs in (["0"], ["3", "0", "0"], [EOFError()], ["invalid", "0"]):
+        for inputs in (["0"], ["2", "0", "0"], [EOFError()], ["invalid", "0"]):
             with self.subTest(inputs=inputs):
                 result, run, _ = self.launch(inputs)
                 self.assertEqual(result, 0)
