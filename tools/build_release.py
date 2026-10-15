@@ -33,7 +33,7 @@ def smoke(executable: Path) -> None:
             raise RuntimeError(f"Missing packaged help: {tool}")
     result = subprocess.run([str(executable), "--cli", "en"], input=b"0\n", capture_output=True,
                             check=True, timeout=30)
-    if b"Fix sidebar" not in result.stdout:
+    if b"Inspect sidebar (read-only)" not in result.stdout:
         raise RuntimeError("Packaged CLI did not display its menu")
 
 
