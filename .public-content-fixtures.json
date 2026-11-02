@@ -1,0 +1,7 @@
+[
+  {
+    "blob": "101935cef68478f8384bc6741100f7feabfe86d6",
+    "path": "tests/test_maintain_sidebar.py",
+    "reason": "Synthetic Windows test-user paths verify exclusion of packaged Codex and VS Code extension executables; this exact blob contains no real user path"
+  }
+]

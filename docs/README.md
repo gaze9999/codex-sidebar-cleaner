@@ -97,3 +97,7 @@ GitHub Actions 的 Build portable CLI 可手動執行, 流程設定為產出 Win
 完整版本 annotated Tag 使用 `vX.Y.Z`, 0.x 與 1.x 使用相同程序. 推送 Tag 只建置 Actions artifacts, 不建立 Release. 手動執行指定既有 Tag, `publish` 預設 false, 明確啟用且三平台全部通過後才將套件與 SHA-256 附加至草稿 Release, 核對所有資產後依授權公開. 流程不自行建立 Tag、不自動公開、不覆寫已發布 Release 或重複資產, 不完整版本號與 prerelease Tag 不進入此正式建置流程
 
 macOS 使用原生 runner 打包, 保留符號連結與檔案權限, 本機 Windows 檢查不代表 macOS 已通過
+
+## 公開內容檢查
+
+提交與推送前依 [公開內容檢查](public-content.md) 設定 Git hooks, 執行暫存區與歷史檢查

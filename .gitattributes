@@ -1,2 +1,5 @@
 launch-cli.cmd text eol=crlf
 launch-cli.command text eol=lf
+
+# Publication hooks run through a POSIX shell on every platform
+.githooks/* text eol=lf
